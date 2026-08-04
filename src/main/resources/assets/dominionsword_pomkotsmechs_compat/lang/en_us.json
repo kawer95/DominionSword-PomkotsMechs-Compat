@@ -1,6 +1,9 @@
 {
   "skill.dominionsword_pomkotsmechs_compat.vector_boost": "Vector Boost",
   "skill.dominionsword_pomkotsmechs_compat.flight_mode": "Toggle Flight/Ground Mode",
+  "skill.dominionsword_pomkotsmechs_compat.ground_dodo": "Gigantic Missile Ground Strike",
+  "skill.dominionsword_pomkotsmechs_compat.ground_nosuri": "Arcing Missile Ground Strike",
+  "skill.dominionsword_pomkotsmechs_compat.ground_mukudori": "Six-Way Arcing Missile Strike",
   "menu.dominionsword_pomkotsmechs_compat.evade": "Boost Evade",
   "menu.dominionsword_pomkotsmechs_compat.weapon_mode": "Switch Weapon Mode",
   "menu.dominionsword_pomkotsmechs_compat.left_arm": "Use Left Arm",

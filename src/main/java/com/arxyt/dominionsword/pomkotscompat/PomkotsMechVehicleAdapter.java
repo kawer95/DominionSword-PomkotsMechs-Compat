@@ -11,6 +11,8 @@ import com.arxyt.dominionsword.pomkotscompat.control.MechPathPlanner;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.Pmv03pEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
+import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -20,7 +22,9 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -38,10 +42,24 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             SKILL_FLIGHT_MODE = "pomkots_flight_mode", ACTION_EVASION = "pomkots_evade",
             ACTION_MODE = "pomkots_weapon_mode", ACTION_LEFT_ARM = "pomkots_left_arm",
             ACTION_RIGHT_SHOULDER = "pomkots_right_shoulder", ACTION_LEFT_SHOULDER = "pomkots_left_shoulder";
+    private static final String SKILL_DODO = "pomkots_ground_dodo",
+            SKILL_NOSURI = "pomkots_ground_nosuri", SKILL_MUKUDORI = "pomkots_ground_mukudori";
+    private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
+            RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
+
+    private static final Set<String> MELEE_WEAPONS = Set.of(
+            "tsurugi", "kagenobu", "takao", "jinba", "gassan", "mitake", "tenpou");
+    private static final Set<String> ENGINEERING_WEAPONS = Set.of(
+            "amagi", "daigomaru", "shoutou", "wada");
+    private static final Set<String> GROUND_SKILL_WEAPONS = Set.of("dodo", "nosuri", "mukudori");
+    private static final Set<String> AUTO_SHOULDER_WEAPONS = Set.of("suwa", "kawasemi", "tsubame");
 
     private static final Map<UUID, ActiveRoute> ROUTES = new ConcurrentHashMap<>();
     private static final Map<UUID, JumpState> JUMPS = new ConcurrentHashMap<>();
     private static final Map<UUID, PendingPulse> PULSES = new ConcurrentHashMap<>();
+    private static final Map<UUID, CombatState> COMBAT = new ConcurrentHashMap<>();
+    private static final Map<SkillCooldownKey, Long> SKILL_COOLDOWNS = new ConcurrentHashMap<>();
+    private static final Map<UUID, GroundMarker> GROUND_MARKERS = new ConcurrentHashMap<>();
     private static final Set<UUID> ACTIVE = ConcurrentHashMap.newKeySet();
 
     @Override public int priority() { return 100; }
@@ -183,17 +201,66 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return false;
         }
         PomkotsVehicleBase mech = (PomkotsVehicleBase) vehicle;
+        if (requiresCombatMode(mech) && !mech.isMainMode()) {
+            submit(mech, MODE);
+            return true;
+        }
+        // The custom mech interprets weapon keys as block-placement controls while build mode is active.
+        // Combat AI must never operate engineering equipment or place/remove blocks.
+        if (mech instanceof Pmvc01Entity custom && custom.isBuildMode()) custom.setBuildMode(false);
         mech.getLockTargets().lockTargetHard(target);
+        CombatState state = COMBAT.computeIfAbsent(mech.getUUID(), ignored -> new CombatState());
+        if (!target.getUUID().equals(state.target)) {
+            state.target = target.getUUID();
+            state.nextPrimaryTick = 0L;
+            state.nextShoulderTick = 0L;
+        }
         double distance = vehicle.distanceTo(target);
-        if (distance > 32.0D || !mech.hasLineOfSight(target)) {
-            Vec3 away = target.position().vectorTo(vehicle.position()).multiply(1.0D, 0.0D, 1.0D);
-            if (away.lengthSqr() < 0.01D) away = new Vec3(0, 0, 1);
-            Vec3 firingPosition = target.position().add(away.normalize().scale(28.0D));
-            return driveTo(vehicle, firingPosition, true);
+        List<WeaponSlot> melee = meleeWeapons(mech);
+        List<WeaponSlot> ranged = rangedWeapons(mech);
+
+        if (mech instanceof Pmv03pEntity flying && flying.isMainMode()) {
+            return attackInFlight(flying, target, ranged, state);
+        }
+
+        if (!melee.isEmpty() && (ranged.isEmpty() || distance <= MELEE_SWITCH_RANGE)) {
+            double reach = Math.max(5.0D, mech.getBbWidth() * 0.75D + target.getBbWidth() * 0.5D + 2.5D);
+            if (distance > reach) return driveTo(vehicle, target.position(), true);
+            aimAt(pilot, target.getBoundingBox().getCenter());
+            setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
+            if (PULSES.containsKey(mech.getUUID())) return true;
+            WeaponSlot weapon = melee.get(Math.floorMod(state.meleeCursor++, melee.size()));
+            int hold = "takao".equals(weapon.itemId()) ? 14 : weapon.continuous() ? 8 : 1;
+            PULSES.put(mech.getUUID(), new PendingPulse(weapon.bit(), hold));
+            ACTIVE.add(mech.getUUID());
+            return true;
+        }
+
+        if (ranged.isEmpty()) {
+            stopMovement(mech);
+            return true;
+        }
+        Vec3 away = flatAway(target.position(), vehicle.position());
+        if (distance > RANGED_MAX_RANGE || !mech.hasLineOfSight(target)) {
+            return driveTo(vehicle, target.position().add(away.scale(RANGED_PREFERRED_RANGE)), true);
+        }
+        if (distance < RANGED_MIN_RANGE) {
+            return driveTo(vehicle, target.position().add(away.scale(RANGED_MIN_RANGE + 4.0D)), true);
         }
         aimAt(pilot, target.getBoundingBox().getCenter());
         setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
-        submit(mech, (short)(WEAPON_ARM_R | LOCK));
+        if (PULSES.containsKey(mech.getUUID())) return true;
+        long now = mech.level().getGameTime();
+        if (scheduleAutomaticShoulder(mech, target, state, now)) return true;
+        WeaponSlot weapon = ranged.get(0);
+        if (weapon.multiLock() && mech instanceof Pmvc01Entity custom && now >= state.nextPrimaryTick) {
+            prepareCustomMultiLock(custom, weapon.inventorySlot(), target);
+            PULSES.put(mech.getUUID(), new PendingPulse(weapon.bit(), 1));
+            state.nextPrimaryTick = now + 80L;
+        } else if (now >= state.nextPrimaryTick) {
+            submit(mech, (short)(weapon.bit() | LOCK));
+        }
+        ACTIVE.add(mech.getUUID());
         return true;
     }
 
@@ -221,7 +288,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             default -> 0;
         };
         if (bits == 0 || bits == MODE && vehicle instanceof Pmv03pEntity) return false;
-        PULSES.put(vehicle.getUUID(), new PendingPulse(bits, 2));
+        PULSES.put(vehicle.getUUID(), new PendingPulse(bits, 1));
         return true;
     }
 
@@ -237,6 +304,14 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         result.add(new SkillView(SKILL_VECTOR_BOOST,
                 "skill.dominionsword_pomkotsmechs_compat.vector_boost",
                 "minecraft:textures/item/firework_rocket.png", SkillType.POINT, true, 0, 0));
+        if (actor instanceof Pmvc01Entity custom) {
+            addGroundWeaponSkill(result, custom, SKILL_DODO, "dodo",
+                    "skill.dominionsword_pomkotsmechs_compat.ground_dodo", "minecraft:textures/item/tnt_minecart.png");
+            addGroundWeaponSkill(result, custom, SKILL_NOSURI, "nosuri",
+                    "skill.dominionsword_pomkotsmechs_compat.ground_nosuri", "minecraft:textures/item/firework_rocket.png");
+            addGroundWeaponSkill(result, custom, SKILL_MUKUDORI, "mukudori",
+                    "skill.dominionsword_pomkotsmechs_compat.ground_mukudori", "minecraft:textures/item/fire_charge.png");
+        }
         return result;
     }
 
@@ -252,6 +327,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 mech.setDeltaMovement(movement.x, 0.0D, movement.z);
             }
             return true;
+        }
+        if (isGroundWeaponSkill(skillId) && context.actor() instanceof Pmvc01Entity custom
+                && context.target() != null && context.target().position() != null) {
+            return fireGroundWeaponSkill(context.commander(), custom, skillId, context.target().position());
         }
         if (!SKILL_VECTOR_BOOST.equals(skillId) || context.target() == null
                 || context.target().position() == null
@@ -270,6 +349,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     public void tick(MinecraftServer server) {
         if (server == null) return;
+        cleanupGroundMarkers(server);
+        long serverTick = server.overworld().getGameTime();
+        SKILL_COOLDOWNS.entrySet().removeIf(entry -> entry.getValue() <= serverTick);
         Set<UUID> known = new HashSet<>();
         known.addAll(ACTIVE); known.addAll(JUMPS.keySet()); known.addAll(PULSES.keySet());
         for (UUID id : known) {
@@ -287,9 +369,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (jump != null && jump.manual) advanceJump(mech, jump);
             PendingPulse pulse = PULSES.get(id);
             if (pulse != null) {
-                if (pulse.ticks == 2) submit(mech, pulse.bits);
+                if (pulse.remainingTicks > 1) submit(mech, pulse.bits);
                 else submit(mech, (short)0);
-                if (--pulse.ticks <= 0) PULSES.remove(id);
+                if (--pulse.remainingTicks <= 0) PULSES.remove(id);
             }
         }
     }
@@ -386,6 +468,243 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         return route;
     }
 
+    private static List<WeaponSlot> meleeWeapons(PomkotsVehicleBase mech) {
+        String vehicle = vehicleId(mech);
+        if ("pmv01".equals(vehicle) || "pmv01b".equals(vehicle)) {
+            return List.of(new WeaponSlot(WEAPON_ARM_L, -1, "pmv01_pile", false, false, false));
+        }
+        if ("pmv02".equals(vehicle)) {
+            return List.of(
+                    new WeaponSlot(WEAPON_ARM_L, -1, "pmv02_drill", true, false, false),
+                    new WeaponSlot(WEAPON_SHOULDER_R, -1, "pmv02_hammer", false, true, false));
+        }
+        if (!(mech instanceof Pmvc01Entity custom)) return List.of();
+        List<WeaponSlot> result = new ArrayList<>();
+        for (int slot : weaponSlots()) {
+            ItemStack stack = weapon(custom, slot);
+            String id = itemId(stack);
+            if (MELEE_WEAPONS.contains(id)) {
+                result.add(new WeaponSlot(bitForSlot(slot), slot, id, "jinba".equals(id), "takao".equals(id), false));
+            }
+        }
+        return result;
+    }
+
+    private static List<WeaponSlot> rangedWeapons(PomkotsVehicleBase mech) {
+        String vehicle = vehicleId(mech);
+        if ("pmv01".equals(vehicle) || "pmv01b".equals(vehicle)) {
+            return List.of(new WeaponSlot(WEAPON_ARM_R, -1, "pmv01_gatling", true, false, false));
+        }
+        if ("pmv02".equals(vehicle)) {
+            return List.of(new WeaponSlot(WEAPON_ARM_R, -1, "pmv02_needle", true, false, false));
+        }
+        if ("pmv03p".equals(vehicle)) {
+            return List.of(new WeaponSlot(WEAPON_ARM_R, -1, "pmv03p_gatling", true, false, false));
+        }
+        if ("pmv03".equals(vehicle)) {
+            return List.of(new WeaponSlot(WEAPON_ARM_R, -1, "pmv03_rifle", false, false, false));
+        }
+        if (!(mech instanceof Pmvc01Entity custom)) return List.of();
+        List<WeaponSlot> result = new ArrayList<>();
+        for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_HAND, Pmvc01Entity.INV_WEAPON_LEFT_HAND}) {
+            ItemStack stack = weapon(custom, slot);
+            String id = itemId(stack);
+            if (!id.isBlank() && !MELEE_WEAPONS.contains(id) && !ENGINEERING_WEAPONS.contains(id)
+                    && !GROUND_SKILL_WEAPONS.contains(id)) {
+                boolean continuous = "shinobazu".equals(id) || "kasumi".equals(id);
+                result.add(new WeaponSlot(bitForSlot(slot), slot, id, continuous, false, "uguisu".equals(id)));
+            }
+        }
+        return result;
+    }
+
+    private static boolean scheduleAutomaticShoulder(PomkotsVehicleBase mech, LivingEntity target,
+                                                       CombatState state, long now) {
+        if (now < state.nextShoulderTick) return false;
+        String vehicle = vehicleId(mech);
+        if ("pmv03p".equals(vehicle)) {
+            PULSES.put(mech.getUUID(), new PendingPulse(WEAPON_ARM_L, 1));
+            state.nextShoulderTick = now + 100L;
+            return true;
+        }
+        if ("pmv01".equals(vehicle) || "pmv01b".equals(vehicle) || "pmv03".equals(vehicle)) {
+            mech.getLockTargets().clearLockTargetsMulti();
+            for (int i = 0; i < 6; i++) mech.getLockTargets().lockTargetMulti(target);
+            mech.getLockTargets().unlockTargetMulti();
+            PULSES.put(mech.getUUID(), new PendingPulse(WEAPON_SHOULDER_R, 1));
+            state.nextShoulderTick = now + 100L;
+            return true;
+        }
+        if (!(mech instanceof Pmvc01Entity custom)) return false;
+        List<WeaponSlot> shoulders = new ArrayList<>();
+        for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER, Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER}) {
+            String id = itemId(weapon(custom, slot));
+            if (AUTO_SHOULDER_WEAPONS.contains(id)) {
+                shoulders.add(new WeaponSlot(bitForSlot(slot), slot, id, "suwa".equals(id), false,
+                        "kawasemi".equals(id) || "tsubame".equals(id)));
+            }
+        }
+        if (shoulders.isEmpty()) return false;
+        WeaponSlot shoulder = shoulders.get(Math.floorMod(state.shoulderCursor++, shoulders.size()));
+        if (shoulder.multiLock()) prepareCustomMultiLock(custom, shoulder.inventorySlot(), target);
+        PULSES.put(mech.getUUID(), new PendingPulse(shoulder.bit(), shoulder.continuous() ? 10 : 1));
+        state.nextShoulderTick = now + (shoulder.continuous() ? 60L : 100L);
+        return true;
+    }
+
+    private static void prepareCustomMultiLock(Pmvc01Entity mech, int slot, Entity target) {
+        mech.getLockTargets().clearLockTargetsMulti(slot);
+        int count = Math.max(1, Pmvc01Entity.getMultiLockTargetNum(weapon(mech, slot)));
+        for (int i = 0; i < count; i++) mech.getLockTargets().lockTargetMulti(target, slot, mech);
+    }
+
+    private static void addGroundWeaponSkill(List<SkillView> result, Pmvc01Entity mech, String skillId,
+                                              String weaponId, String label, String icon) {
+        if (findWeaponSlot(mech, weaponId) < 0) return;
+        long now = mech.level().getGameTime();
+        long expiry = SKILL_COOLDOWNS.getOrDefault(new SkillCooldownKey(mech.getUUID(), skillId), 0L);
+        int remaining = (int)Math.max(0L, expiry - now);
+        result.add(new SkillView(skillId, label, icon, SkillType.POINT,
+                remaining == 0 && !PULSES.containsKey(mech.getUUID()), 120, remaining));
+    }
+
+    private static boolean fireGroundWeaponSkill(ServerPlayer commander, Pmvc01Entity mech,
+                                                  String skillId, Vec3 requested) {
+        String weaponId = groundSkillWeaponId(skillId);
+        int slot = findWeaponSlot(mech, weaponId);
+        if (slot < 0 || PULSES.containsKey(mech.getUUID()) || !(mech.level() instanceof ServerLevel level)
+                || requested.distanceToSqr(mech.position()) > 128.0D * 128.0D) return false;
+        long now = level.getGameTime();
+        SkillCooldownKey key = new SkillCooldownKey(mech.getUUID(), skillId);
+        if (SKILL_COOLDOWNS.getOrDefault(key, 0L) > now) return false;
+        Optional<Vec3> target = snapToGround(level, requested);
+        if (target.isEmpty()) return false;
+
+        Vec3 point = target.get();
+        ArmorStand marker = new ArmorStand(level, point.x, point.y, point.z);
+        marker.setInvisible(true);
+        marker.setInvulnerable(true);
+        marker.setNoGravity(true);
+        marker.setSilent(true);
+        marker.getPersistentData().putBoolean("DominionPomkotsGroundTarget", true);
+        if (!level.addFreshEntity(marker)) return false;
+
+        prepareCustomMultiLock(mech, slot, marker);
+        LivingEntity pilot = mech.getDrivingPassenger();
+        if (pilot != null) aimAt(pilot, point);
+        PULSES.put(mech.getUUID(), new PendingPulse(bitForSlot(slot), 1));
+        SKILL_COOLDOWNS.put(key, now + 120L);
+        GROUND_MARKERS.put(marker.getUUID(), new GroundMarker(now + 320L));
+        ACTIVE.add(mech.getUUID());
+        return true;
+    }
+
+    private static boolean attackInFlight(Pmv03pEntity mech, LivingEntity target,
+                                          List<WeaponSlot> ranged, CombatState state) {
+        ((MechControlBridge)mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
+        Vec3 delta = target.getBoundingBox().getCenter().subtract(mech.position());
+        double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+        float desiredYaw = yawTo(mech.position(), target.position());
+        float desiredPitch = (float)(-(Mth.atan2(delta.y, horizontal) * Mth.RAD_TO_DEG));
+        float yawError = Mth.wrapDegrees(desiredYaw - mech.getYRot());
+        float pitchError = Mth.wrapDegrees(desiredPitch - mech.getXRot());
+        if (PULSES.containsKey(mech.getUUID())) return true;
+        boolean aligned = Math.abs(yawError) <= 12.0F && Math.abs(pitchError) <= 12.0F
+                && mech.hasLineOfSight(target);
+        if (aligned && scheduleAutomaticShoulder(mech, target, state, mech.level().getGameTime())) return true;
+        short bits = 0;
+        if (yawError < -2.0F) bits |= LEFT;
+        else if (yawError > 2.0F) bits |= RIGHT;
+        if (pitchError < -2.0F) bits |= FORWARD;
+        else if (pitchError > 2.0F) bits |= BACK;
+        if (!ranged.isEmpty() && aligned) {
+            bits |= ranged.get(0).bit();
+        }
+        submit(mech, bits);
+        ACTIVE.add(mech.getUUID());
+        return true;
+    }
+
+    private static Optional<Vec3> snapToGround(ServerLevel level, Vec3 requested) {
+        BlockPos pos = BlockPos.containing(requested);
+        for (int i = 0; i <= 32 && pos.getY() >= level.getMinBuildHeight(); i++, pos = pos.below()) {
+            if (!level.getBlockState(pos).getCollisionShape(level, pos).isEmpty()) {
+                return Optional.of(Vec3.atBottomCenterOf(pos.above()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static void cleanupGroundMarkers(MinecraftServer server) {
+        long now = server.overworld().getGameTime();
+        for (Iterator<Map.Entry<UUID, GroundMarker>> iterator = GROUND_MARKERS.entrySet().iterator(); iterator.hasNext();) {
+            Map.Entry<UUID, GroundMarker> entry = iterator.next();
+            Entity marker = find(server, entry.getKey());
+            if (marker == null || entry.getValue().expiresAt() <= now) {
+                if (marker != null) marker.discard();
+                GROUND_MARKERS.remove(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    private static boolean isGroundWeaponSkill(String skillId) {
+        return SKILL_DODO.equals(skillId) || SKILL_NOSURI.equals(skillId) || SKILL_MUKUDORI.equals(skillId);
+    }
+
+    private static String groundSkillWeaponId(String skillId) {
+        if (SKILL_DODO.equals(skillId)) return "dodo";
+        if (SKILL_NOSURI.equals(skillId)) return "nosuri";
+        if (SKILL_MUKUDORI.equals(skillId)) return "mukudori";
+        return "";
+    }
+
+    private static int findWeaponSlot(Pmvc01Entity mech, String weaponId) {
+        for (int slot : weaponSlots()) if (weaponId.equals(itemId(weapon(mech, slot)))) return slot;
+        return -1;
+    }
+
+    private static int[] weaponSlots() {
+        return new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_HAND, Pmvc01Entity.INV_WEAPON_LEFT_HAND,
+                Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER, Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER};
+    }
+
+    private static ItemStack weapon(Pmvc01Entity mech, int slot) {
+        if (slot == Pmvc01Entity.INV_WEAPON_RIGHT_HAND) return mech.getRightArmWeapon();
+        if (slot == Pmvc01Entity.INV_WEAPON_LEFT_HAND) return mech.getLeftArmWeapon();
+        if (slot == Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER) return mech.getRightShoulderWeapon();
+        if (slot == Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER) return mech.getLeftShoulderWeapon();
+        return ItemStack.EMPTY;
+    }
+
+    private static short bitForSlot(int slot) {
+        if (slot == Pmvc01Entity.INV_WEAPON_RIGHT_HAND) return WEAPON_ARM_R;
+        if (slot == Pmvc01Entity.INV_WEAPON_LEFT_HAND) return WEAPON_ARM_L;
+        if (slot == Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER) return WEAPON_SHOULDER_R;
+        if (slot == Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER) return WEAPON_SHOULDER_L;
+        return 0;
+    }
+
+    private static String itemId(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return "";
+        var key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return key != null && "pomkotsmechs".equals(key.getNamespace()) ? key.getPath() : "";
+    }
+
+    private static String vehicleId(Entity entity) {
+        var key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        return key != null && "pomkotsmechs".equals(key.getNamespace()) ? key.getPath() : "";
+    }
+
+    private static boolean requiresCombatMode(PomkotsVehicleBase mech) {
+        String id = vehicleId(mech);
+        return "pmv01".equals(id) || "pmv01b".equals(id) || "pmv02".equals(id) || "pmv03".equals(id);
+    }
+
+    private static Vec3 flatAway(Vec3 from, Vec3 to) {
+        Vec3 away = from.vectorTo(to).multiply(1.0D, 0.0D, 1.0D);
+        return away.lengthSqr() < 0.01D ? new Vec3(0.0D, 0.0D, 1.0D) : away.normalize();
+    }
+
     private boolean canControl(ServerPlayer player, Entity vehicle) {
         if (!supports(vehicle)) return false;
         LivingEntity pilot = driver(vehicle);
@@ -444,7 +763,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (pilot != null) { pilot.zza = 0; pilot.xxa = 0; }
         }
         UUID id = vehicle.getUUID();
-        ACTIVE.remove(id); JUMPS.remove(id); PULSES.remove(id);
+        ACTIVE.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
         if (clearTasks) ROUTES.remove(id);
     }
 
@@ -456,7 +775,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         return null;
     }
 
-    private static void cleanup(UUID id) { ACTIVE.remove(id); ROUTES.remove(id); JUMPS.remove(id); PULSES.remove(id); }
+    private static void cleanup(UUID id) {
+        ACTIVE.remove(id); ROUTES.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
+        SKILL_COOLDOWNS.keySet().removeIf(key -> key.vehicleId().equals(id));
+    }
 
     private static final class ActiveRoute {
         final Vec3 target; final MechPathPlanner.Route route; final long builtAt; int index;
@@ -469,7 +791,21 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         JumpState(Vec3 landing, boolean manual) { this.landing = landing; this.manual = manual; }
     }
     private static final class PendingPulse {
-        final short bits; int ticks;
-        PendingPulse(short bits, int ticks) { this.bits = bits; this.ticks = ticks; }
+        final short bits; int remainingTicks;
+        PendingPulse(short bits, int pressTicks) {
+            this.bits = bits;
+            this.remainingTicks = Math.max(1, pressTicks) + 1;
+        }
     }
+    private static final class CombatState {
+        UUID target;
+        long nextShoulderTick;
+        long nextPrimaryTick;
+        int meleeCursor;
+        int shoulderCursor;
+    }
+    private record WeaponSlot(short bit, int inventorySlot, String itemId,
+                              boolean continuous, boolean charge, boolean multiLock) {}
+    private record SkillCooldownKey(UUID vehicleId, String skillId) {}
+    private record GroundMarker(long expiresAt) {}
 }

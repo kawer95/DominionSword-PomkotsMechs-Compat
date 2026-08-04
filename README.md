@@ -33,3 +33,7 @@ For local automatic deployment, create an ignored `local.properties` file contai
 PMVT01 is a stationary turret rather than a mobile mech and is intentionally not exposed as a Dominion Sword vehicle.
 
 PMV03P exposes an instant command-mode skill for switching between its native alpha.8 flight and ground modes. All supported mobile mechs also retain the point-targeted Vector Boost skill.
+
+Combat orders select close-range or ranged positioning from the installed weapon set. Fixed-mech missile systems and PMVC01 Suwa, Kawasemi and Tsubame shoulder weapons are used periodically; PMV03P also uses its horizontal missile in both flight and ground combat. PMVC01 engineering tools are never selected automatically. Dodo, Nosuri and Mukudori launchers appear as point-targeted ground strike skills when equipped.
+
+Weapon terrain damage is controlled by Pomkots Mechs' own `enablePlayerVehicleBlockDestruction` setting. Set it to `false` in the Pomkots Mechs configuration to prevent weapon explosions from breaking blocks, including when the pilot is a Dominion Sword unit.
