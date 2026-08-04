@@ -1,3 +1,12 @@
+# 1.6.0
+
+- Repairs alpha.8 gatling bullets skipping half of every swept collision path and clears hurt immunity before damage.
+- Gives legacy missiles a real owner and the commanded hard-lock target, including PMV03P missiles that otherwise only seek players.
+- Stops stale continuous fire when an attack target dies or the attack order stops refreshing.
+- Raises automatic auxiliary weapon intervals to 12 seconds for continuous equipment and 20 seconds for missiles/ordnance.
+- Moves Boost Evasion from the action menu to an instant skill with a 10-second cooldown.
+- Requires Dominion Sword 1.23.1.
+
 # 1.5.0
 
 - Fixes every uncontrolled enemy being rejected as a friendly target because two absent controller UUIDs compared equal.

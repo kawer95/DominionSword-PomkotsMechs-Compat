@@ -41,14 +41,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             WEAPON_SHOULDER_L = 512, LOCK = 1024, MODE = 2048;
 
     private static final String SKILL_VECTOR_BOOST = "pomkots_vector_boost",
-            SKILL_FLIGHT_MODE = "pomkots_flight_mode", ACTION_EVASION = "pomkots_evade",
+            SKILL_FLIGHT_MODE = "pomkots_flight_mode", SKILL_EVASION = "pomkots_evade",
             ACTION_MODE = "pomkots_weapon_mode";
     private static final String SKILL_DODO = "pomkots_ground_dodo",
             SKILL_NOSURI = "pomkots_ground_nosuri", SKILL_MUKUDORI = "pomkots_ground_mukudori";
     private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
             RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
     private static final double VECTOR_BOOST_MAX_RANGE = 32.0D;
-    private static final int VECTOR_BOOST_COOLDOWN_TICKS = 600;
+    private static final int VECTOR_BOOST_COOLDOWN_TICKS = 600, EVASION_COOLDOWN_TICKS = 200;
+    private static final long AUTO_CONTINUOUS_EQUIPMENT_INTERVAL = 240L;
+    private static final long AUTO_ORDNANCE_INTERVAL = 400L;
 
     private static final Set<String> MELEE_WEAPONS = Set.of(
             "tsurugi", "kagenobu", "takao", "jinba", "gassan", "mitake", "tenpou");
@@ -213,6 +215,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (mech instanceof Pmvc01Entity custom && custom.isBuildMode()) custom.setBuildMode(false);
         mech.getLockTargets().lockTargetHard(target);
         CombatState state = COMBAT.computeIfAbsent(mech.getUUID(), ignored -> new CombatState());
+        state.lastAttackTick = mech.level().getGameTime();
         if (!target.getUUID().equals(state.target)) {
             state.target = target.getUUID();
             state.nextPrimaryTick = 0L;
@@ -284,7 +287,6 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     public List<ActionView> actions(Entity vehicle) {
         if (!hasDriver(vehicle)) return List.of();
         List<ActionView> result = new ArrayList<>();
-        result.add(new ActionView(ACTION_EVASION, "@menu.dominionsword_pomkotsmechs_compat.evade"));
         if (!(vehicle instanceof Pmv03pEntity)) result.add(new ActionView(ACTION_MODE, "@menu.dominionsword_pomkotsmechs_compat.weapon_mode"));
         return result;
     }
@@ -292,11 +294,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override
     public boolean performAction(ServerPlayer player, Entity vehicle, String actionId) {
         if (!canControl(player, vehicle) || !(vehicle instanceof PomkotsVehicleBase mech)) return false;
-        short bits = switch (actionId) {
-            case ACTION_EVASION -> EVASION;
-            case ACTION_MODE -> MODE;
-            default -> 0;
-        };
+        short bits = ACTION_MODE.equals(actionId) ? MODE : 0;
         if (bits == 0 || bits == MODE && vehicle instanceof Pmv03pEntity) return false;
         PULSES.put(vehicle.getUUID(), new PendingPulse(bits, 1));
         return true;
@@ -312,6 +310,13 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                     "minecraft:textures/item/elytra.png", SkillType.INSTANT, true, 0, 0));
         }
         long vectorNow = actor.level().getGameTime();
+        int evasionRemaining = (int)Math.max(0L, SKILL_COOLDOWNS.getOrDefault(
+                new SkillCooldownKey(actor.getUUID(), SKILL_EVASION), 0L) - vectorNow);
+        result.add(new SkillView(SKILL_EVASION,
+                "skill.dominionsword_pomkotsmechs_compat.evade",
+                "minecraft:textures/item/feather.png", SkillType.INSTANT,
+                evasionRemaining == 0 && !PULSES.containsKey(actor.getUUID()), EVASION_COOLDOWN_TICKS,
+                evasionRemaining));
         int vectorRemaining = (int)Math.max(0L, SKILL_COOLDOWNS.getOrDefault(
                 new SkillCooldownKey(actor.getUUID(), SKILL_VECTOR_BOOST), 0L) - vectorNow);
         result.add(new SkillView(SKILL_VECTOR_BOOST,
@@ -341,6 +346,15 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 Vec3 movement = mech.getDeltaMovement();
                 mech.setDeltaMovement(movement.x, 0.0D, movement.z);
             }
+            return true;
+        }
+        if (SKILL_EVASION.equals(skillId) && context.actor() instanceof PomkotsVehicleBase mech) {
+            long now = mech.level().getGameTime();
+            SkillCooldownKey cooldown = new SkillCooldownKey(mech.getUUID(), SKILL_EVASION);
+            if (SKILL_COOLDOWNS.getOrDefault(cooldown, 0L) > now || PULSES.containsKey(mech.getUUID())) return false;
+            PULSES.put(mech.getUUID(), new PendingPulse(EVASION, 1));
+            SKILL_COOLDOWNS.put(cooldown, now + EVASION_COOLDOWN_TICKS);
+            ACTIVE.add(mech.getUUID());
             return true;
         }
         if (isGroundWeaponSkill(skillId) && context.actor() instanceof Pmvc01Entity custom
@@ -376,7 +390,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         long serverTick = server.overworld().getGameTime();
         SKILL_COOLDOWNS.entrySet().removeIf(entry -> entry.getValue() <= serverTick);
         Set<UUID> known = new HashSet<>();
-        known.addAll(ACTIVE); known.addAll(JUMPS.keySet()); known.addAll(PULSES.keySet());
+        known.addAll(ACTIVE); known.addAll(JUMPS.keySet()); known.addAll(PULSES.keySet()); known.addAll(COMBAT.keySet());
         for (UUID id : known) {
             Entity entity = find(server, id);
             if (!(entity instanceof PomkotsVehicleBase mech) || !supports(mech)) {
@@ -387,6 +401,17 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (!(pilot instanceof Mob) || pilot instanceof Player) {
                 stop(mech, true);
                 continue;
+            }
+            CombatState combat = COMBAT.get(id);
+            if (combat != null) {
+                Entity combatTarget = find(server, combat.target);
+                if (!(combatTarget instanceof LivingEntity livingTarget) || !livingTarget.isAlive()
+                        || serverTick > combat.lastAttackTick + 1L) {
+                    submit(mech, (short)0);
+                    mech.getLockTargets().clearLockTargets();
+                    PULSES.remove(id);
+                    COMBAT.remove(id, combat);
+                }
             }
             JumpState jump = JUMPS.get(id);
             if (jump != null && jump.manual) advanceJump(mech, jump);
@@ -588,7 +613,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         String vehicle = vehicleId(mech);
         if ("pmv03p".equals(vehicle)) {
             PULSES.put(mech.getUUID(), new PendingPulse(WEAPON_ARM_L, 1));
-            state.nextShoulderTick = now + 100L;
+            state.nextShoulderTick = now + AUTO_ORDNANCE_INTERVAL;
             return true;
         }
         if ("pmv01".equals(vehicle) || "pmv01b".equals(vehicle) || "pmv03".equals(vehicle)) {
@@ -596,7 +621,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             for (int i = 0; i < 6; i++) mech.getLockTargets().lockTargetMulti(target);
             mech.getLockTargets().unlockTargetMulti();
             PULSES.put(mech.getUUID(), new PendingPulse(WEAPON_SHOULDER_R, 1));
-            state.nextShoulderTick = now + 100L;
+            state.nextShoulderTick = now + AUTO_ORDNANCE_INTERVAL;
             return true;
         }
         if (!(mech instanceof Pmvc01Entity custom)) return false;
@@ -614,7 +639,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (auxiliary.multiLock()) prepareCustomMultiLock(custom, auxiliary.inventorySlot(), target);
         else mech.getLockTargets().lockTargetHard(target);
         PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), auxiliary.continuous() ? 10 : 1));
-        state.nextShoulderTick = now + (auxiliary.continuous() ? 60L : 100L);
+        state.nextShoulderTick = now + (auxiliary.continuous()
+                ? AUTO_CONTINUOUS_EQUIPMENT_INTERVAL : AUTO_ORDNANCE_INTERVAL);
         return true;
     }
 
@@ -873,6 +899,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         long nextShoulderTick;
         long nextPrimaryTick;
         long nextTraceTick;
+        long lastAttackTick;
         int meleeCursor;
         int shoulderCursor;
     }
