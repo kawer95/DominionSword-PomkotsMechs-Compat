@@ -1,3 +1,9 @@
+# 1.4.2
+
+- Fixes ground mechs circling their destination by turning in place before applying forward input.
+- Replaces the vehicle-specific ground route planner with the mounted unit's vanilla Mob navigation; the mech now follows the biological pilot's walkable path nodes.
+- Keeps Vector Boost as an explicitly activated skill instead of automatically jumping during ordinary movement.
+
 # 1.4.1
 
 - Fixes the production Forge client crash caused by unmapped `travel` and `tick` Mixin targets in the obfuscated Pomkots alpha.8 JAR.

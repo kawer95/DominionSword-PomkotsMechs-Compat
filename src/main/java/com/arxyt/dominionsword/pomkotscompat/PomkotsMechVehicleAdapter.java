@@ -25,6 +25,8 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.pathfinder.Node;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -171,7 +173,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override
     public void prepareMoveRoute(ServerPlayer player, Entity vehicle, Vec3 target) {
         if (!canControl(player, vehicle) || target == null) return;
-        MechPathPlanner.Route route = MechPathPlanner.plan(vehicle, target);
+        MechPathPlanner.Route route = planPilotRoute(vehicle, target);
         ROUTES.put(vehicle.getUUID(), new ActiveRoute(target, route, 1, vehicle.level().getGameTime()));
     }
 
@@ -383,35 +385,23 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
         ActiveRoute active = ensureRoute(vehicle, finalTarget);
         List<MechPathPlanner.RoutePoint> points = active.route.points();
-        if (points.isEmpty()) return false;
+        if (points.size() < 2) { stopMovement(mech); return false; }
         while (active.index < points.size() - 1 && flatDistance(vehicle.position(), points.get(active.index).position()) < 1.35D) active.index++;
-        if (active.index >= points.size() - 1
-                && flatDistance(vehicle.position(), points.get(points.size() - 1).position()) < 1.35D
-                && flatDistance(vehicle.position(), finalTarget) > 2.0D) {
-            active = rebuildRoute(vehicle, finalTarget);
-            points = active.route.points();
-        }
         MechPathPlanner.RoutePoint point = points.get(Math.min(active.index, points.size() - 1));
         Vec3 target = point.position();
         double finalDistance = flatDistance(vehicle.position(), finalTarget);
-        if (finalDistance <= 0.45D) { stopMovement(mech); return true; }
+        if (finalDistance <= 0.75D || active.index >= points.size() - 1
+                && flatDistance(vehicle.position(), target) < 1.35D) {
+            stopMovement(mech);
+            return true;
+        }
 
         float desiredYaw = yawTo(vehicle.position(), target);
         float yawDelta = Mth.wrapDegrees(desiredYaw - vehicle.getYRot());
-        if (point.jumpFromPrevious() && mech.onGround()) {
-            startJump(mech, target, false);
-            return advanceJump(mech, JUMPS.get(vehicle.getUUID()));
-        }
-        if (mech.onGround() && Math.abs(yawDelta) < 18.0F && MechPathPlanner.blockedAhead(mech, desiredYaw, 3.0D)) {
-            Optional<Vec3> landing = MechPathPlanner.safeJumpLanding(mech, desiredYaw);
-            if (landing.isPresent() && mech.getEnergy() >= 30) {
-                startJump(mech, landing.get(), false);
-                return advanceJump(mech, JUMPS.get(vehicle.getUUID()));
-            }
-        }
-
-        float commandedYaw = vehicle.getYRot() + Mth.clamp(yawDelta, -9.0F, 9.0F);
-        float forward = Math.abs(yawDelta) < 78.0F ? 1.0F : 0.0F;
+        // A walking living vehicle must turn in place like a Mob.  Driving forward through a
+        // large yaw error creates the endless circles produced by wheeled-vehicle steering.
+        float commandedYaw = vehicle.getYRot() + Mth.clamp(yawDelta, -18.0F, 18.0F);
+        float forward = Math.abs(yawDelta) <= 10.0F ? 1.0F : 0.0F;
         if (combatApproach && finalDistance < 1.0D) forward = 0.0F;
         setFrame(mech, forward, 0.0F, commandedYaw, 0.0F);
         submit(mech, forward > 0 ? FORWARD : (short)0);
@@ -463,9 +453,35 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private ActiveRoute rebuildRoute(Entity vehicle, Vec3 target) {
-        ActiveRoute route = new ActiveRoute(target, MechPathPlanner.plan(vehicle, target), 1, vehicle.level().getGameTime());
+        ActiveRoute route = new ActiveRoute(target, planPilotRoute(vehicle, target), 1, vehicle.level().getGameTime());
         ROUTES.put(vehicle.getUUID(), route);
         return route;
+    }
+
+    /**
+     * Uses the mounted unit's vanilla Mob navigation to choose walkable nodes.  Pomkots mechs
+     * are LivingEntity vehicles rather than Mob instances, so the pilot supplies biological
+     * pathfinding while the adapter translates each node into mech driver input.
+     */
+    private static MechPathPlanner.Route planPilotRoute(Entity vehicle, Vec3 target) {
+        LivingEntity passenger = driver(vehicle);
+        if (!(passenger instanceof Mob pilot) || target == null) {
+            return new MechPathPlanner.Route(List.of());
+        }
+        Path path = pilot.getNavigation().createPath(BlockPos.containing(target), 0);
+        if (path == null || path.getNodeCount() == 0) {
+            return new MechPathPlanner.Route(List.of());
+        }
+        List<MechPathPlanner.RoutePoint> points = new ArrayList<>(path.getNodeCount() + 1);
+        points.add(new MechPathPlanner.RoutePoint(vehicle.position(), false));
+        for (int i = 0; i < path.getNodeCount(); i++) {
+            Node node = path.getNode(i);
+            Vec3 position = new Vec3(node.x + 0.5D, node.y, node.z + 0.5D);
+            if (flatDistance(points.get(points.size() - 1).position(), position) > 0.2D) {
+                points.add(new MechPathPlanner.RoutePoint(position, false));
+            }
+        }
+        return new MechPathPlanner.Route(points);
     }
 
     private static List<WeaponSlot> meleeWeapons(PomkotsVehicleBase mech) {
@@ -760,7 +776,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             ((MechControlBridge)mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
             mech.setNoGravity(false);
             LivingEntity pilot = mech.getDrivingPassenger();
-            if (pilot != null) { pilot.zza = 0; pilot.xxa = 0; }
+            if (pilot != null) {
+                pilot.zza = 0;
+                pilot.xxa = 0;
+                if (pilot instanceof Mob mob) mob.getNavigation().stop();
+            }
         }
         UUID id = vehicle.getUUID();
         ACTIVE.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
