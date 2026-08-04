@@ -1,0 +1,88 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'net.minecraftforge.gradle' version '6.0.54'
+    id 'org.spongepowered.mixin' version '0.7.+'
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = file('local.properties')
+if (localPropertiesFile.isFile()) localPropertiesFile.withReader('UTF-8') { localProperties.load(it) }
+def deploymentDirectory = providers.gradleProperty('deploy_directory').getOrElse(localProperties.getProperty('deploy_directory', ''))
+def deploymentPrefix = providers.gradleProperty('deploy_prefix').getOrElse(localProperties.getProperty('deploy_prefix', '[DominionSword-PomkotsMechs-Compat]'))
+
+group = mod_group_id
+version = mod_version
+base { archivesName = mod_id }
+java { toolchain.languageVersion = JavaLanguageVersion.of(17) }
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+    copyIdeResources = true
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.console.level', 'info'
+            property 'mixin.env.remapRefMap', 'true'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+        client {}
+        server { args '--nogui' }
+    }
+}
+
+repositories {
+    mavenCentral()
+    if (project.hasProperty('runtime_test_dir')) flatDir { dirs file(project.property('runtime_test_dir')) }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+    if (!project.hasProperty('dominionsword_jar')) throw new GradleException('Missing -Pdominionsword_jar')
+    if (!project.hasProperty('pomkots_jar')) throw new GradleException('Missing -Ppomkots_jar')
+    if (!project.hasProperty('geckolib_jar')) throw new GradleException('Missing -Pgeckolib_jar')
+    compileOnly files(project.property('dominionsword_jar'))
+    compileOnly files(project.property('pomkots_jar'))
+    compileOnly files(project.property('geckolib_jar'))
+    if (project.hasProperty('runtime_test_dir')) {
+        runtimeOnly fg.deobf('local:dominionsword:1.22.0')
+        runtimeOnly fg.deobf('local:pomkotsmechs-forge:0.0.1-alpha.3')
+        runtimeOnly fg.deobf('local:geckolib-forge-1.20.1:4.8.4')
+        runtimeOnly fg.deobf('local:architectury-forge:9.2.14')
+        runtimeOnly fg.deobf('local:cloth-config-forge:11.1.136')
+    }
+}
+
+mixin { add sourceSets.main, 'dominionsword_pomkotsmechs_compat.refmap.json' }
+
+tasks.named('processResources', ProcessResources).configure {
+    def props = [minecraft_version_range: minecraft_version_range, forge_version_range: forge_version_range,
+                 loader_version_range: loader_version_range, mod_id: mod_id, mod_name: mod_name,
+                 mod_license: mod_license, mod_version: mod_version, mod_authors: mod_authors,
+                 mod_description: mod_description]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) { expand props + [project: project] }
+}
+
+tasks.named('jar', Jar).configure {
+    from('LICENSE')
+    from('RELEASE_NOTES.md')
+    manifest { attributes(['MixinConfigs': 'dominionsword_pomkotsmechs_compat.mixins.json']) }
+    finalizedBy 'reobfJar'
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+tasks.register('deployToGame', Copy) {
+    if (deploymentDirectory.isBlank()) throw new GradleException('Set deploy_directory in ignored local.properties or with -Pdeploy_directory=<mods path>')
+    dependsOn tasks.named('reobfJar')
+    from tasks.named('jar').flatMap { it.archiveFile }
+    into file(deploymentDirectory)
+    rename { originalName -> "${deploymentPrefix}${originalName}" }
+    doFirst {
+        File target = file(deploymentDirectory)
+        if (!target.exists() && !target.mkdirs()) throw new GradleException("Cannot create deployment directory: ${target}")
+        target.listFiles()?.findAll { it.isFile() && it.name.startsWith(deploymentPrefix) && it.name.endsWith('.jar') }
+                ?.each { oldJar -> delete oldJar }
+    }
+}
