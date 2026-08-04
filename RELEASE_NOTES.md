@@ -1,3 +1,8 @@
+# 1.4.1
+
+- Fixes the production Forge client crash caused by unmapped `travel` and `tick` Mixin targets in the obfuscated Pomkots alpha.8 JAR.
+- Supports both development names and production SRG names without relying on an empty generated refmap.
+
 # 1.4.0
 
 - Separates melee and ranged combat: melee-equipped mechs close to weapon reach, while ranged mechs seek line of sight, hold a useful firing distance and retreat inside ten blocks.

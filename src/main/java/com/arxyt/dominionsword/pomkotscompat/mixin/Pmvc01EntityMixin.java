@@ -10,11 +10,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(Pmvc01Entity.class)
 public abstract class Pmvc01EntityMixin {
     @Redirect(
-            method = "tick",
+            method = {"tick()V", "m_8119_()V"},
             at = @At(
                     value = "INVOKE",
                     target = "Lgrcmcs/minecraft/mods/pomkotsmechs/entity/npc/pilot/ai/MechAutoController;tick()V"
-            )
+            ),
+            remap = false
     )
     private void dominion$pauseNativeMobController(MechAutoController controller) {
         MechControlBridge bridge = (MechControlBridge) this;

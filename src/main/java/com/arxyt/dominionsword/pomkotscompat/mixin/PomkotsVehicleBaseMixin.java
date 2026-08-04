@@ -25,7 +25,14 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
         return dominion$controlFrame;
     }
 
-    @Inject(method = "travel", at = @At("HEAD"))
+    @Inject(
+            method = {
+                    "travel(Lnet/minecraft/world/phys/Vec3;)V",
+                    "m_7023_(Lnet/minecraft/world/phys/Vec3;)V"
+            },
+            at = @At("HEAD"),
+            remap = false
+    )
     private void dominion$applyUnitPilotInput(Vec3 travelVector, CallbackInfo ci) {
         MechControlFrame frame = dominion$controlFrame;
         if (frame == null || !frame.active()) return;
