@@ -1,3 +1,9 @@
+# 1.6.2
+
+- Raises automatic continuous shoulder-equipment intervals from 12 to 60 seconds.
+- Raises automatic missile and ordnance intervals from 20 to 100 seconds.
+- Keeps the auxiliary cooldown on the mech itself so changing or losing targets cannot reset it.
+
 # 1.6.1
 
 - Fixes alpha.8 production-name matching for the bullet and missile tick Mixins.
