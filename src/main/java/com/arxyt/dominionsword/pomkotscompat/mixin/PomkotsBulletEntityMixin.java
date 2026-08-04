@@ -23,7 +23,7 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
         super(type, level);
     }
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = {"tick()V", "m_8119_()V"}, at = @At("HEAD"), remap = false)
     private void dominion$scanFullIntendedBulletStep(CallbackInfo ci) {
         LivingEntity source = getShooter();
         if (getOwner() == null && source != null) {
@@ -34,9 +34,14 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
         setDeltaMovement(getDeltaMovement().scale(2.0D));
     }
 
-    @Inject(method = "tick", at = @At(value = "INVOKE",
-            target = "Lgrcmcs/minecraft/mods/pomkotsmechs/entity/projectile/PomkotsThrowableProjectile;tick()V",
-            shift = At.Shift.AFTER), cancellable = true)
+    @Inject(method = {"tick()V", "m_8119_()V"}, at = {
+            @At(value = "INVOKE",
+                    target = "Lgrcmcs/minecraft/mods/pomkotsmechs/entity/projectile/PomkotsThrowableProjectile;tick()V",
+                    shift = At.Shift.AFTER, remap = false),
+            @At(value = "INVOKE",
+                    target = "Lgrcmcs/minecraft/mods/pomkotsmechs/entity/projectile/PomkotsThrowableProjectile;m_8119_()V",
+                    shift = At.Shift.AFTER, remap = false)
+    }, cancellable = true, remap = false)
     private void dominion$removeUncheckedSecondMove(CallbackInfo ci) {
         Vec3 velocity = getDeltaMovement();
         setDeltaMovement(velocity.scale(0.5D));
@@ -44,7 +49,8 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
         ci.cancel();
     }
 
-    @Inject(method = "onHitEntity", at = @At("HEAD"))
+    @Inject(method = {"onHitEntity(Lnet/minecraft/world/phys/EntityHitResult;)V",
+            "m_5790_(Lnet/minecraft/world/phys/EntityHitResult;)V"}, at = @At("HEAD"), remap = false)
     private void dominion$clearInvulnerabilityBeforeDamage(EntityHitResult hit, CallbackInfo ci) {
         hit.getEntity().invulnerableTime = 0;
     }

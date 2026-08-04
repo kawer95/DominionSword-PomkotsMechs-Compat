@@ -1,3 +1,8 @@
+# 1.6.1
+
+- Fixes alpha.8 production-name matching for the bullet and missile tick Mixins.
+- Prevents the compatibility addon from aborting Pomkots Mechs during Forge startup.
+
 # 1.6.0
 
 - Repairs alpha.8 gatling bullets skipping half of every swept collision path and clears hurt immunity before damage.

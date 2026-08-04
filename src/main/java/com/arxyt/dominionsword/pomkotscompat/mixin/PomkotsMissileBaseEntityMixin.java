@@ -16,7 +16,7 @@ public abstract class PomkotsMissileBaseEntityMixin {
     @Shadow protected LivingEntity shooter;
     @Shadow protected LivingEntity target;
 
-    @Inject(method = "tick", at = @At("HEAD"))
+    @Inject(method = {"tick()V", "m_8119_()V"}, at = @At("HEAD"), remap = false)
     private void dominion$bindCommandedMissileTarget(CallbackInfo ci) {
         MissileBaseEntity missile = (MissileBaseEntity)(Object)this;
         if (missile.getOwner() == null && shooter != null) {
