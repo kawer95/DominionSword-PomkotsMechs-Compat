@@ -217,6 +217,17 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         double distance = vehicle.distanceTo(target);
         List<WeaponSlot> melee = meleeWeapons(mech);
         List<WeaponSlot> ranged = rangedWeapons(mech);
+        long traceNow = mech.level().getGameTime();
+        if (traceNow >= state.nextTraceTick) {
+            MechControlBridge bridge = (MechControlBridge) mech;
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-COMBAT] mech={} target={} distance={} lineOfSight={} mainMode={} melee={} ranged={} appliedInput={}",
+                    BuiltInRegistries.ENTITY_TYPE.getKey(mech.getType()), target.getType().toString(),
+                    String.format(Locale.ROOT, "%.2f", distance), mech.hasLineOfSight(target), mech.isMainMode(),
+                    melee.stream().map(WeaponSlot::itemId).toList(), ranged.stream().map(WeaponSlot::itemId).toList(),
+                    bridge.dominion$getLastAppliedDriverInput());
+            state.nextTraceTick = traceNow + 40L;
+        }
 
         if (mech instanceof Pmv03pEntity flying && flying.isMainMode()) {
             return attackInFlight(flying, target, ranged, state);
@@ -337,6 +348,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                     "message.dominionsword_pomkotsmechs_compat.jump_unsafe"), true);
             return false;
         }
+        if (!PlayerControl.redirectVehicleMove(context.commander(), mech, landing.get())) return false;
         ROUTES.remove(mech.getUUID());
         startJump(mech, landing.get(), true);
         return true;
@@ -758,7 +770,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void submit(PomkotsVehicleBase mech, short bits) {
-        mech.setDriverInput(new DriverInput(bits, mech.getDriverInput()));
+        ((MechControlBridge)mech).dominion$queueDriverInput(bits);
     }
 
     private static void ensureGroundMode(Entity vehicle) {
@@ -825,6 +837,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         UUID target;
         long nextShoulderTick;
         long nextPrimaryTick;
+        long nextTraceTick;
         int meleeCursor;
         int shoulderCursor;
     }

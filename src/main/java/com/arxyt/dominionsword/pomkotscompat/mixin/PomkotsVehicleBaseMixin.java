@@ -2,6 +2,7 @@ package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
+import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
@@ -14,6 +15,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(PomkotsVehicleBase.class)
 public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
     @Unique private MechControlFrame dominion$controlFrame = MechControlFrame.INACTIVE;
+    @Unique private boolean dominion$hasQueuedDriverInput;
+    @Unique private short dominion$queuedDriverInput;
+    @Unique private short dominion$lastAppliedDriverInput;
 
     @Override
     public void dominion$setControlFrame(MechControlFrame frame) {
@@ -23,6 +27,31 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
     @Override
     public MechControlFrame dominion$getControlFrame() {
         return dominion$controlFrame;
+    }
+
+    @Override
+    public void dominion$queueDriverInput(short bits) {
+        dominion$queuedDriverInput = bits;
+        dominion$hasQueuedDriverInput = true;
+    }
+
+    @Override
+    public short dominion$getLastAppliedDriverInput() {
+        return dominion$lastAppliedDriverInput;
+    }
+
+    /**
+     * PMVC runs its built-in Mob auto controller before calling super.tick(), which can replace
+     * the input submitted by Dominion Sword at the end of the preceding server tick. Apply our
+     * queued frame here, after that controller and immediately before Pomkots consumes driverInput.
+     */
+    @Inject(method = {"tick()V", "m_8119_()V"}, at = @At("HEAD"), remap = false)
+    private void dominion$applyQueuedDriverInput(CallbackInfo ci) {
+        if (!dominion$hasQueuedDriverInput) return;
+        dominion$hasQueuedDriverInput = false;
+        dominion$lastAppliedDriverInput = dominion$queuedDriverInput;
+        PomkotsVehicleBase mech = (PomkotsVehicleBase) (Object) this;
+        mech.setDriverInput(new DriverInput(dominion$queuedDriverInput, mech.getDriverInput()));
     }
 
     @Inject(

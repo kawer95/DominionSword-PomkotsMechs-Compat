@@ -1,3 +1,9 @@
+# 1.4.4
+
+- Applies Dominion attack and movement inputs after Pomkots alpha.8's built-in Mob controller, preventing PMVC01 from overwriting weapon keys before they are consumed; adds throttled combat-state diagnostics to the server log.
+- Redirects the persistent vehicle move order to Vector Boost's validated landing point, preventing the mech from walking back to its previous destination after landing.
+- Requires Dominion Sword 1.22.3 for the shared point-skill ground marker and safe single-vehicle target redirection.
+
 # 1.4.3
 
 - Fixes Vector Boost spiralling in the air: mechs now turn in place before launch and keep the launch heading until landing.
