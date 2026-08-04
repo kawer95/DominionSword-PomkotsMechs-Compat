@@ -47,10 +47,11 @@ dependencies {
     compileOnly files(project.property('geckolib_jar'))
     if (project.hasProperty('runtime_test_dir')) {
         runtimeOnly fg.deobf('local:dominionsword:1.22.0')
-        runtimeOnly fg.deobf('local:pomkotsmechs-forge:0.0.1-alpha.3')
+        runtimeOnly fg.deobf('local:pomkotsmechs-forge:0.0.1-alpha.8')
         runtimeOnly fg.deobf('local:geckolib-forge-1.20.1:4.8.4')
         runtimeOnly fg.deobf('local:architectury-forge:9.2.14')
         runtimeOnly fg.deobf('local:cloth-config-forge:11.1.136')
+        runtimeOnly fg.deobf('local:gbf:1.0.2')
     }
 }
 

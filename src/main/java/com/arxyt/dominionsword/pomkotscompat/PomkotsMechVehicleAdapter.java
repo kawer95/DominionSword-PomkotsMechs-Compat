@@ -28,7 +28,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, DominionSkillProvider {
-    private static final Set<String> SUPPORTED = Set.of("pmv01", "pmv01b", "pmv02", "pmv03p");
+    private static final Set<String> SUPPORTED = Set.of("pmv01", "pmv01b", "pmv02", "pmv03p", "pmv03", "pmvc01");
 
     private static final short FORWARD = 1, BACK = 2, LEFT = 4, RIGHT = 8, EVASION = 16, JUMP = 32;
     private static final short WEAPON_ARM_R = 64, WEAPON_ARM_L = 128, WEAPON_SHOULDER_R = 256,
@@ -131,7 +131,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (!force || !(occupant instanceof Mob) || player == null || !player.getUUID().equals(PlayerControl.controller(occupant))) return false;
             VehicleDismounts.dismount(vehicle, occupant);
         }
-        if (vehicle instanceof Pmv03pEntity pmv03p && !pmv03p.isMainMode()) pmv03p.setDriverInput(new DriverInput(MODE));
+        ensureGroundMode(vehicle);
         return unit.getVehicle() == vehicle || unit.startRiding(vehicle, true);
     }
 
@@ -264,7 +264,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 stop(mech, true);
                 continue;
             }
-            if (mech instanceof Pmv03pEntity pmv03p && !pmv03p.isMainMode()) {
+            if (mech instanceof Pmv03pEntity pmv03p && pmv03p.isMainMode()) {
                 submit(mech, MODE);
                 setFrame(mech, 0, 0, mech.getYRot(), 0);
             }
@@ -281,7 +281,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     private boolean driveTo(Entity vehicle, Vec3 finalTarget, boolean combatApproach) {
         PomkotsVehicleBase mech = (PomkotsVehicleBase) vehicle;
-        if (mech instanceof Pmv03pEntity pmv03p && !pmv03p.isMainMode()) submit(mech, MODE);
+        ensureGroundMode(mech);
         JumpState jump = JUMPS.get(vehicle.getUUID());
         if (jump != null) return advanceJump(mech, jump);
 
@@ -405,6 +405,12 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void submit(PomkotsVehicleBase mech, short bits) { mech.setDriverInput(new DriverInput(bits)); }
+
+    private static void ensureGroundMode(Entity vehicle) {
+        if (vehicle instanceof Pmv03pEntity pmv03p && pmv03p.isMainMode()) {
+            pmv03p.setDriverInput(new DriverInput(MODE));
+        }
+    }
 
     private static void stopMovement(PomkotsVehicleBase mech) {
         submit(mech, (short)0);

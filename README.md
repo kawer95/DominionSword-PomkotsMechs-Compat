@@ -5,7 +5,8 @@ Forge 1.20.1 compatibility add-on that lets Dominion Sword-controlled units boar
 ## Requirements
 
 - Dominion Sword 1.22.0 or newer
-- Pomkots Mechs 0.0.1-alpha.3
+- Pomkots Mechs 0.0.1-alpha.8
+- GBF 1.0.1 or newer, plus the other dependencies required by Pomkots Mechs alpha.8
 - Forge 47.x for Minecraft 1.20.1
 
 ## Licensing
@@ -23,3 +24,10 @@ Supply local development JAR paths to Gradle; the dependencies are intentionally
 ```
 
 For local automatic deployment, create an ignored `local.properties` file containing `deploy_directory=<mods path>` and optionally `deploy_prefix=<file prefix>`, then run `deployToGame`.
+
+## Supported vehicles
+
+- PMV01, PMV01B, PMV02, PMV03P and PMV03
+- PMVC01 customizable mech
+
+PMVT01 is a stationary turret rather than a mobile mech and is intentionally not exposed as a Dominion Sword vehicle.

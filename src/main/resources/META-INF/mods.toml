@@ -33,6 +33,6 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="pomkotsmechs"
 mandatory=true
-versionRange="[0.0.1-alpha.3]"
+versionRange="[0.0.1-alpha.8]"
 ordering="AFTER"
 side="BOTH"
