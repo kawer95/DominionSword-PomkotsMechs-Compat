@@ -6,9 +6,6 @@
   "skill.dominionsword_pomkotsmechs_compat.ground_mukudori": "六联曲射散布打击",
   "menu.dominionsword_pomkotsmechs_compat.evade": "推进闪避",
   "menu.dominionsword_pomkotsmechs_compat.weapon_mode": "切换武器模式",
-  "menu.dominionsword_pomkotsmechs_compat.left_arm": "使用左臂装备",
-  "menu.dominionsword_pomkotsmechs_compat.right_shoulder": "使用右肩装备",
-  "menu.dominionsword_pomkotsmechs_compat.left_shoulder": "使用左肩装备",
   "message.dominionsword_pomkotsmechs_compat.jump_unsafe": "没有找到安全的大跳落点",
   "message.dominionsword_pomkotsmechs_compat.player_driver": "真实玩家正在驾驶，单位不能接管"
 }

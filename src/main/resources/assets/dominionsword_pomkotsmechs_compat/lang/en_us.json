@@ -6,9 +6,6 @@
   "skill.dominionsword_pomkotsmechs_compat.ground_mukudori": "Six-Way Arcing Missile Strike",
   "menu.dominionsword_pomkotsmechs_compat.evade": "Boost Evade",
   "menu.dominionsword_pomkotsmechs_compat.weapon_mode": "Switch Weapon Mode",
-  "menu.dominionsword_pomkotsmechs_compat.left_arm": "Use Left Arm",
-  "menu.dominionsword_pomkotsmechs_compat.right_shoulder": "Use Right Shoulder",
-  "menu.dominionsword_pomkotsmechs_compat.left_shoulder": "Use Left Shoulder",
   "message.dominionsword_pomkotsmechs_compat.jump_unsafe": "No safe obstacle-jump landing was found",
   "message.dominionsword_pomkotsmechs_compat.player_driver": "A real player is driving this mech"
 }

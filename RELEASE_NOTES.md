@@ -1,3 +1,9 @@
+# 1.4.3
+
+- Fixes Vector Boost spiralling in the air: mechs now turn in place before launch and keep the launch heading until landing.
+- Removes direct left-arm and shoulder equipment triggers from the vehicle action menu.
+- Automatically rotates every eligible auxiliary weapon against the locked enemy while excluding the primary gun, melee weapons, engineering equipment and point-targeted skill weapons.
+
 # 1.4.2
 
 - Fixes ground mechs circling their destination by turning in place before applying forward input.
