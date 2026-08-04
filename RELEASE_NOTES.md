@@ -1,3 +1,9 @@
+# 1.6.4
+
+- Replaces Vector Boost's horizontal correction plus free-fall landing with a sampled parabolic flight curve.
+- Raises the curve only as much as needed to clear the mech's full collision box and rejects blocked trajectories.
+- Converges horizontal and vertical motion together at the safe landing point without a final uncontrolled drop.
+
 # 1.6.3
 
 - Requires Dominion Sword 1.23.3 so a mech driver cannot independently acquire targets or attack.

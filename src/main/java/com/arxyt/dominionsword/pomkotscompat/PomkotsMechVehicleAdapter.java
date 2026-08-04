@@ -22,6 +22,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -377,9 +378,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                     "message.dominionsword_pomkotsmechs_compat.jump_unsafe"), true);
             return false;
         }
+        Optional<JumpState> jump = buildJumpState(mech, landing.get(), true);
+        if (jump.isEmpty()) {
+            context.commander().displayClientMessage(Component.translatable(
+                    "message.dominionsword_pomkotsmechs_compat.jump_unsafe"), true);
+            return false;
+        }
         if (!PlayerControl.redirectVehicleMove(context.commander(), mech, requestedJump)) return false;
         ROUTES.remove(mech.getUUID());
-        startJump(mech, landing.get(), true);
+        JUMPS.put(mech.getUUID(), jump.get());
+        ACTIVE.add(mech.getUUID());
         SKILL_COOLDOWNS.put(cooldown, now + VECTOR_BOOST_COOLDOWN_TICKS);
         return true;
     }
@@ -457,10 +465,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     private boolean advanceJump(PomkotsVehicleBase mech, JumpState jump) {
         if (jump == null) return false;
-        Vec3 delta = jump.landing.subtract(mech.position());
         float desiredYaw = yawTo(mech.position(), jump.landing);
         float yawDelta = Mth.wrapDegrees(desiredYaw - mech.getYRot());
-        if (!jump.wasAirborne && mech.onGround() && Math.abs(yawDelta) > 6.0F) {
+        if (jump.step == 0 && mech.onGround() && Math.abs(yawDelta) > 6.0F) {
             float turningYaw = mech.getYRot() + Mth.clamp(yawDelta, -18.0F, 18.0F);
             setFrame(mech, 0.0F, 0.0F, turningYaw, 0.0F);
             submit(mech, (short)0);
@@ -468,42 +475,69 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return true;
         }
         if (Float.isNaN(jump.heading)) jump.heading = desiredYaw;
-        jump.ticks++;
-        float commandedYaw = jump.heading;
-        if (!mech.onGround()) jump.wasAirborne = true;
-        if (jump.wasAirborne && mech.onGround()) {
-            JUMPS.remove(mech.getUUID());
-            settleJumpCommandAtActualLanding(mech);
-            stopMovement(mech);
+        jump.step++;
+        int index = Math.min(jump.step, jump.path.size() - 1);
+        Vec3 desired = jump.path.get(index);
+        mech.setNoGravity(true);
+        mech.setDeltaMovement(Vec3.ZERO);
+        setFrame(mech, 0.0F, 0.0F, jump.heading, 0.0F);
+        submit(mech, jump.step == 1 ? JUMP : (short)0);
+        mech.move(MoverType.SELF, desired.subtract(mech.position()));
+        mech.setDeltaMovement(Vec3.ZERO);
+        mech.fallDistance = 0.0F;
+
+        if (mech.position().distanceToSqr(desired) > 0.16D) {
+            finishJump(mech);
             return true;
         }
-        if (jump.wasAirborne && delta.horizontalDistanceSqr() > 1.2D) {
-            Vec3 horizontal = delta.multiply(1.0D, 0.0D, 1.0D);
-            double speed = Mth.clamp(horizontal.length() * 0.16D, 0.45D, 1.15D);
-            Vec3 velocity = horizontal.normalize().scale(speed);
-            mech.setDeltaMovement(velocity.x, mech.getDeltaMovement().y, velocity.z);
-        }
-        if (jump.ticks > 65 || (jump.wasAirborne && delta.horizontalDistanceSqr() < 1.2D && mech.getDeltaMovement().y <= 0.0D)) {
-            if (delta.horizontalDistanceSqr() < 1.2D) {
-                mech.setDeltaMovement(0.0D, mech.getDeltaMovement().y, 0.0D);
-            }
-            submit(mech, (short)0);
-            setFrame(mech, 0.0F, 0.0F, commandedYaw, 0.0F);
-            ACTIVE.add(mech.getUUID());
+        if (index >= jump.path.size() - 1) {
+            finishJump(mech);
             return true;
         }
-        boolean holdLift = jump.ticks <= 22 && (!jump.wasAirborne || mech.getDeltaMovement().y > -0.25D);
-        short keys = FORWARD;
-        if (holdLift) keys |= JUMP;
-        setFrame(mech, 1.0F, 0.0F, commandedYaw, 0.0F);
-        submit(mech, keys);
         ACTIVE.add(mech.getUUID());
         return true;
     }
 
-    private void startJump(PomkotsVehicleBase mech, Vec3 landing, boolean manual) {
-        JUMPS.put(mech.getUUID(), new JumpState(landing, manual));
-        ACTIVE.add(mech.getUUID());
+    private static Optional<JumpState> buildJumpState(PomkotsVehicleBase mech, Vec3 landing, boolean manual) {
+        Vec3 start = mech.position();
+        double distance = flatDistance(start, landing);
+        int duration = Mth.clamp((int)Math.ceil(distance / 0.85D), 12, 40);
+        double initialLift = Mth.clamp(2.75D + distance * 0.12D, 3.0D, 6.5D);
+        for (double lift = initialLift; lift <= 12.0D + 1.0E-6D; lift += 1.25D) {
+            List<Vec3> path = new ArrayList<>(duration + 1);
+            for (int step = 0; step <= duration; step++) {
+                double t = step / (double)duration;
+                Vec3 linear = start.lerp(landing, t);
+                path.add(linear.add(0.0D, 4.0D * lift * t * (1.0D - t), 0.0D));
+            }
+            if (jumpCurveClear(mech, start, path)) {
+                return Optional.of(new JumpState(landing, manual, List.copyOf(path)));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean jumpCurveClear(PomkotsVehicleBase mech, Vec3 start, List<Vec3> path) {
+        AABB bounds = mech.getBoundingBox().deflate(0.04D);
+        for (int i = 1; i < path.size(); i++) {
+            Vec3 from = path.get(i - 1), to = path.get(i);
+            int samples = Math.max(1, (int)Math.ceil(from.distanceTo(to) / 0.3D));
+            int checkedSamples = i == path.size() - 1 ? samples - 1 : samples;
+            for (int sample = 1; sample <= checkedSamples; sample++) {
+                Vec3 point = from.lerp(to, sample / (double)samples);
+                if (!mech.level().noCollision(mech, bounds.move(point.subtract(start)))) return false;
+            }
+        }
+        return true;
+    }
+
+    private static void finishJump(PomkotsVehicleBase mech) {
+        JUMPS.remove(mech.getUUID());
+        mech.setNoGravity(false);
+        mech.setDeltaMovement(Vec3.ZERO);
+        mech.fallDistance = 0.0F;
+        settleJumpCommandAtActualLanding(mech);
+        stopMovement(mech);
     }
 
     private static void settleJumpCommandAtActualLanding(PomkotsVehicleBase mech) {
@@ -886,8 +920,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
     }
     private static final class JumpState {
-        final Vec3 landing; final boolean manual; int ticks; boolean wasAirborne; float heading = Float.NaN;
-        JumpState(Vec3 landing, boolean manual) { this.landing = landing; this.manual = manual; }
+        final Vec3 landing; final boolean manual; final List<Vec3> path; int step; float heading = Float.NaN;
+        JumpState(Vec3 landing, boolean manual, List<Vec3> path) {
+            this.landing = landing; this.manual = manual; this.path = path;
+        }
     }
     private static final class PendingPulse {
         final short bits; int remainingTicks;
