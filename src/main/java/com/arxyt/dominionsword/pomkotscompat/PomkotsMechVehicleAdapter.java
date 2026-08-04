@@ -475,13 +475,23 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return true;
         }
         if (Float.isNaN(jump.heading)) jump.heading = desiredYaw;
+        // Pomkots starts ACT_JUMP only when it consumes a JUMP input while the mech is still
+        // on the ground. Prime that native action for one full tick before our sampled curve
+        // lifts the mech so its original animation sound keyframes still run.
+        if (!jump.launchPrimed) {
+            jump.launchPrimed = true;
+            setFrame(mech, 0.0F, 0.0F, jump.heading, 0.0F);
+            submit(mech, JUMP);
+            ACTIVE.add(mech.getUUID());
+            return true;
+        }
         jump.step++;
         int index = Math.min(jump.step, jump.path.size() - 1);
         Vec3 desired = jump.path.get(index);
         mech.setNoGravity(true);
         mech.setDeltaMovement(Vec3.ZERO);
         setFrame(mech, 0.0F, 0.0F, jump.heading, 0.0F);
-        submit(mech, jump.step == 1 ? JUMP : (short)0);
+        submit(mech, (short)0);
         mech.move(MoverType.SELF, desired.subtract(mech.position()));
         mech.setDeltaMovement(Vec3.ZERO);
         mech.fallDistance = 0.0F;
@@ -920,7 +930,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
     }
     private static final class JumpState {
-        final Vec3 landing; final boolean manual; final List<Vec3> path; int step; float heading = Float.NaN;
+        final Vec3 landing; final boolean manual; final List<Vec3> path;
+        int step; float heading = Float.NaN; boolean launchPrimed;
         JumpState(Vec3 landing, boolean manual, List<Vec3> path) {
             this.landing = landing; this.manual = manual; this.path = path;
         }

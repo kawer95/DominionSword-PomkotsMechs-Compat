@@ -1,3 +1,8 @@
+# 1.6.5
+
+- Fixes Vector Boost bypassing Pomkots Mechs' native jump action by lifting the mech before its queued jump input was consumed.
+- Primes the native jump animation for one grounded tick, restoring the original jump and booster sound keyframes without changing the precise landing curve.
+
 # 1.6.4
 
 - Replaces Vector Boost's horizontal correction plus free-fall landing with a sampled parabolic flight curve.
