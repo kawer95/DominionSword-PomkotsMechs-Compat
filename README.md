@@ -31,3 +31,5 @@ For local automatic deployment, create an ignored `local.properties` file contai
 - PMVC01 customizable mech
 
 PMVT01 is a stationary turret rather than a mobile mech and is intentionally not exposed as a Dominion Sword vehicle.
+
+PMV03P exposes an instant command-mode skill for switching between its native alpha.8 flight and ground modes. All supported mobile mechs also retain the point-targeted Vector Boost skill.

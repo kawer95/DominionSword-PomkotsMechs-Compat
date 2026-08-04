@@ -34,7 +34,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final short WEAPON_ARM_R = 64, WEAPON_ARM_L = 128, WEAPON_SHOULDER_R = 256,
             WEAPON_SHOULDER_L = 512, LOCK = 1024, MODE = 2048;
 
-    private static final String SKILL_VECTOR_BOOST = "pomkots_vector_boost", ACTION_EVASION = "pomkots_evade",
+    private static final String SKILL_VECTOR_BOOST = "pomkots_vector_boost",
+            SKILL_FLIGHT_MODE = "pomkots_flight_mode", ACTION_EVASION = "pomkots_evade",
             ACTION_MODE = "pomkots_weapon_mode", ACTION_LEFT_ARM = "pomkots_left_arm",
             ACTION_RIGHT_SHOULDER = "pomkots_right_shoulder", ACTION_LEFT_SHOULDER = "pomkots_left_shoulder";
 
@@ -227,15 +228,33 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override
     public List<SkillView> skills(ServerPlayer commander, Entity actor) {
         if (!canControl(commander, actor)) return List.of();
-        return List.of(new SkillView(SKILL_VECTOR_BOOST,
+        List<SkillView> result = new ArrayList<>();
+        if (actor instanceof Pmv03pEntity) {
+            result.add(new SkillView(SKILL_FLIGHT_MODE,
+                    "skill.dominionsword_pomkotsmechs_compat.flight_mode",
+                    "minecraft:textures/item/elytra.png", SkillType.INSTANT, true, 0, 0));
+        }
+        result.add(new SkillView(SKILL_VECTOR_BOOST,
                 "skill.dominionsword_pomkotsmechs_compat.vector_boost",
                 "minecraft:textures/item/firework_rocket.png", SkillType.POINT, true, 0, 0));
+        return result;
     }
 
     @Override
     public boolean activate(SkillContext context, String skillId) {
-        if (!SKILL_VECTOR_BOOST.equals(skillId) || context == null || context.target() == null
-                || context.target().position() == null || !canControl(context.commander(), context.actor())
+        if (context == null || !canControl(context.commander(), context.actor())) return false;
+        if (SKILL_FLIGHT_MODE.equals(skillId) && context.actor() instanceof Pmv03pEntity mech) {
+            boolean enteringFlight = !mech.isMainMode();
+            submit(mech, MODE);
+            mech.setNoGravity(enteringFlight);
+            if (!enteringFlight) {
+                Vec3 movement = mech.getDeltaMovement();
+                mech.setDeltaMovement(movement.x, 0.0D, movement.z);
+            }
+            return true;
+        }
+        if (!SKILL_VECTOR_BOOST.equals(skillId) || context.target() == null
+                || context.target().position() == null
                 || !(context.actor() instanceof PomkotsVehicleBase mech) || !mech.onGround()
                 || JUMPS.containsKey(mech.getUUID())) return false;
         Optional<Vec3> landing = MechPathPlanner.safeJumpLanding(mech, context.target().position());
@@ -264,10 +283,6 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 stop(mech, true);
                 continue;
             }
-            if (mech instanceof Pmv03pEntity pmv03p && pmv03p.isMainMode()) {
-                submit(mech, MODE);
-                setFrame(mech, 0, 0, mech.getYRot(), 0);
-            }
             JumpState jump = JUMPS.get(id);
             if (jump != null && jump.manual) advanceJump(mech, jump);
             PendingPulse pulse = PULSES.get(id);
@@ -281,7 +296,6 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     private boolean driveTo(Entity vehicle, Vec3 finalTarget, boolean combatApproach) {
         PomkotsVehicleBase mech = (PomkotsVehicleBase) vehicle;
-        ensureGroundMode(mech);
         JumpState jump = JUMPS.get(vehicle.getUUID());
         if (jump != null) return advanceJump(mech, jump);
 
@@ -404,7 +418,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         ((MechControlBridge)mech).dominion$setControlFrame(new MechControlFrame(true, forward, strafe, yaw, pitch));
     }
 
-    private static void submit(PomkotsVehicleBase mech, short bits) { mech.setDriverInput(new DriverInput(bits)); }
+    private static void submit(PomkotsVehicleBase mech, short bits) {
+        mech.setDriverInput(new DriverInput(bits, mech.getDriverInput()));
+    }
 
     private static void ensureGroundMode(Entity vehicle) {
         if (vehicle instanceof Pmv03pEntity pmv03p && pmv03p.isMainMode()) {
