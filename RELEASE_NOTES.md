@@ -1,3 +1,10 @@
+# 1.5.0
+
+- Fixes every uncontrolled enemy being rejected as a friendly target because two absent controller UUIDs compared equal.
+- Keeps Vector Boost's displayed command target at the clicked jump point while airborne, then settles it at the mech's real landing position so it cannot walk back.
+- Extends Vector Boost to 32 blocks with a 30-second cooldown and authoritative client/server range validation.
+- Requires Dominion Sword 1.23.0 for point-skill range visualization and seven configurable skill shortcuts.
+
 # 1.4.4
 
 - Applies Dominion attack and movement inputs after Pomkots alpha.8's built-in Mob controller, preventing PMVC01 from overwriting weapon keys before they are consumed; adds throttled combat-state diagnostics to the server log.

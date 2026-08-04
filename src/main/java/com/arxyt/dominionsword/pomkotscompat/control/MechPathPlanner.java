@@ -109,7 +109,7 @@ public final class MechPathPlanner {
         double requestedDistance = horizontal.length();
         if (requestedDistance < 2.5D) return Optional.empty();
         Vec3 direction = horizontal.scale(1.0D / requestedDistance);
-        double maximum = Math.min(12.0D, requestedDistance);
+        double maximum = Math.min(32.0D, requestedDistance);
         for (double distance = maximum; distance >= 3.5D; distance -= 1.0D) {
             Vec3 point = start.add(direction.scale(distance));
             Integer y = findStandY(level, vehicle, point.x, point.z, (int)Math.floor(start.y), 5);

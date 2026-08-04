@@ -47,6 +47,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             SKILL_NOSURI = "pomkots_ground_nosuri", SKILL_MUKUDORI = "pomkots_ground_mukudori";
     private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
             RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
+    private static final double VECTOR_BOOST_MAX_RANGE = 32.0D;
+    private static final int VECTOR_BOOST_COOLDOWN_TICKS = 600;
 
     private static final Set<String> MELEE_WEAPONS = Set.of(
             "tsurugi", "kagenobu", "takao", "jinba", "gassan", "mitake", "tenpou");
@@ -194,8 +196,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return false;
         }
         LivingEntity pilot = driver(vehicle);
+        UUID pilotController = PlayerControl.controller(pilot);
+        UUID targetController = PlayerControl.controller(target);
         if (pilot == target || (player != null && FactionAccess.sameFaction(player, pilot, target))
-                || Objects.equals(PlayerControl.controller(target), PlayerControl.controller(pilot))) {
+                || pilotController != null && pilotController.equals(targetController)) {
             stop(vehicle, false);
             return false;
         }
@@ -307,9 +311,14 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                     "skill.dominionsword_pomkotsmechs_compat.flight_mode",
                     "minecraft:textures/item/elytra.png", SkillType.INSTANT, true, 0, 0));
         }
+        long vectorNow = actor.level().getGameTime();
+        int vectorRemaining = (int)Math.max(0L, SKILL_COOLDOWNS.getOrDefault(
+                new SkillCooldownKey(actor.getUUID(), SKILL_VECTOR_BOOST), 0L) - vectorNow);
         result.add(new SkillView(SKILL_VECTOR_BOOST,
                 "skill.dominionsword_pomkotsmechs_compat.vector_boost",
-                "minecraft:textures/item/firework_rocket.png", SkillType.POINT, true, 0, 0));
+                "minecraft:textures/item/firework_rocket.png", SkillType.POINT,
+                vectorRemaining == 0 && !JUMPS.containsKey(actor.getUUID()), VECTOR_BOOST_COOLDOWN_TICKS,
+                vectorRemaining, 2.5D, VECTOR_BOOST_MAX_RANGE));
         if (actor instanceof Pmvc01Entity custom) {
             addGroundWeaponSkill(result, custom, SKILL_DODO, "dodo",
                     "skill.dominionsword_pomkotsmechs_compat.ground_dodo", "minecraft:textures/item/tnt_minecart.png");
@@ -342,15 +351,22 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 || context.target().position() == null
                 || !(context.actor() instanceof PomkotsVehicleBase mech) || !mech.onGround()
                 || JUMPS.containsKey(mech.getUUID())) return false;
-        Optional<Vec3> landing = MechPathPlanner.safeJumpLanding(mech, context.target().position());
+        Vec3 requestedJump = context.target().position();
+        double jumpDistance = flatDistance(mech.position(), requestedJump);
+        if (jumpDistance < 2.5D || jumpDistance > VECTOR_BOOST_MAX_RANGE) return false;
+        long now = mech.level().getGameTime();
+        SkillCooldownKey cooldown = new SkillCooldownKey(mech.getUUID(), SKILL_VECTOR_BOOST);
+        if (SKILL_COOLDOWNS.getOrDefault(cooldown, 0L) > now) return false;
+        Optional<Vec3> landing = MechPathPlanner.safeJumpLanding(mech, requestedJump);
         if (landing.isEmpty()) {
             context.commander().displayClientMessage(Component.translatable(
                     "message.dominionsword_pomkotsmechs_compat.jump_unsafe"), true);
             return false;
         }
-        if (!PlayerControl.redirectVehicleMove(context.commander(), mech, landing.get())) return false;
+        if (!PlayerControl.redirectVehicleMove(context.commander(), mech, requestedJump)) return false;
         ROUTES.remove(mech.getUUID());
         startJump(mech, landing.get(), true);
+        SKILL_COOLDOWNS.put(cooldown, now + VECTOR_BOOST_COOLDOWN_TICKS);
         return true;
     }
 
@@ -432,13 +448,23 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (!mech.onGround()) jump.wasAirborne = true;
         if (jump.wasAirborne && mech.onGround()) {
             JUMPS.remove(mech.getUUID());
+            settleJumpCommandAtActualLanding(mech);
             stopMovement(mech);
             return true;
         }
-        if (jump.ticks > 30 || (jump.wasAirborne && delta.horizontalDistanceSqr() < 1.2D && mech.getDeltaMovement().y <= 0.0D)) {
-            JUMPS.remove(mech.getUUID());
+        if (jump.wasAirborne && delta.horizontalDistanceSqr() > 1.2D) {
+            Vec3 horizontal = delta.multiply(1.0D, 0.0D, 1.0D);
+            double speed = Mth.clamp(horizontal.length() * 0.16D, 0.45D, 1.15D);
+            Vec3 velocity = horizontal.normalize().scale(speed);
+            mech.setDeltaMovement(velocity.x, mech.getDeltaMovement().y, velocity.z);
+        }
+        if (jump.ticks > 65 || (jump.wasAirborne && delta.horizontalDistanceSqr() < 1.2D && mech.getDeltaMovement().y <= 0.0D)) {
+            if (delta.horizontalDistanceSqr() < 1.2D) {
+                mech.setDeltaMovement(0.0D, mech.getDeltaMovement().y, 0.0D);
+            }
             submit(mech, (short)0);
             setFrame(mech, 0.0F, 0.0F, commandedYaw, 0.0F);
+            ACTIVE.add(mech.getUUID());
             return true;
         }
         boolean holdLift = jump.ticks <= 22 && (!jump.wasAirborne || mech.getDeltaMovement().y > -0.25D);
@@ -453,6 +479,15 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private void startJump(PomkotsVehicleBase mech, Vec3 landing, boolean manual) {
         JUMPS.put(mech.getUUID(), new JumpState(landing, manual));
         ACTIVE.add(mech.getUUID());
+    }
+
+    private static void settleJumpCommandAtActualLanding(PomkotsVehicleBase mech) {
+        if (mech.getServer() == null) return;
+        UUID controller = PlayerControl.controller(mech);
+        ServerPlayer commander = controller == null ? null : mech.getServer().getPlayerList().getPlayer(controller);
+        if (commander != null && commander.serverLevel() == mech.level()) {
+            PlayerControl.redirectVehicleMove(commander, mech, mech.position());
+        }
     }
 
     private ActiveRoute ensureRoute(Entity vehicle, Vec3 target) {
