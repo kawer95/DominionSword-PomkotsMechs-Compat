@@ -1,3 +1,8 @@
+# 1.6.3
+
+- Requires Dominion Sword 1.23.3 so a mech driver cannot independently acquire targets or attack.
+- Applies the pilot-only combat gate to maids, CustomNPCs and generic ranged or melee mobs.
+
 # 1.6.2
 
 - Raises automatic continuous shoulder-equipment intervals from 12 to 60 seconds.
