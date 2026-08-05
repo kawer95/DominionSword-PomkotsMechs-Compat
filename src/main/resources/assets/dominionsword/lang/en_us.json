@@ -1,0 +1,6 @@
+{
+  "screen.dominionsword.config.mod.pomkots": "Pomkots Mechs",
+  "screen.dominionsword.config.mod.pomkots.tooltip": "Show settings supplied by Dominion Sword: Pomkots Mechs Compatibility.",
+  "screen.dominionsword.pomkots.disable_weapon_block_destruction": "Disable Weapon Terrain Damage: %s",
+  "screen.dominionsword.pomkots.disable_weapon_block_destruction.tooltip": "Prevent explosions and direct block destruction caused by Pomkots weapons. Engineering construction and demolition remain enabled. Administrators only."
+}

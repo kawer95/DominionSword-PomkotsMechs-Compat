@@ -2,9 +2,13 @@ package com.arxyt.dominionsword.pomkotscompat;
 
 import com.arxyt.dominionsword.api.DominionVehicleAdapters;
 import com.arxyt.dominionsword.api.DominionSkills;
+import com.arxyt.dominionsword.config.ServerConfig;
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.Entity;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 
@@ -18,10 +22,21 @@ public final class DominionSwordPomkotsCompatMod {
         DominionVehicleAdapters.register(adapter);
         DominionSkills.register(adapter);
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(this::onExplosionDetonate);
         LOGGER.info("[DominionSword Pomkots Compat] Pomkots mech skill and vehicle bridge enabled");
     }
 
     private void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) adapter.tick(event.getServer());
+    }
+
+    private void onExplosionDetonate(ExplosionEvent.Detonate event) {
+        if (!ServerConfig.POMKOTS_DISABLE_WEAPON_BLOCK_DESTRUCTION.get()) return;
+        Entity exploder = event.getExplosion().getExploder();
+        if (exploder == null) return;
+        var key = BuiltInRegistries.ENTITY_TYPE.getKey(exploder.getType());
+        if (key != null && "pomkotsmechs".equals(key.getNamespace())) {
+            event.getAffectedBlocks().clear();
+        }
     }
 }

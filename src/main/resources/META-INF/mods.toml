@@ -32,7 +32,7 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="dominionsword"
 mandatory=true
-versionRange="[1.24.0,)"
+versionRange="[1.26.3,)"
 ordering="AFTER"
 side="BOTH"
 

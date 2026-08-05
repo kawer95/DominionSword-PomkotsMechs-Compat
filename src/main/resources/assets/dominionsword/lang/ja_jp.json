@@ -1,0 +1,6 @@
+{
+  "screen.dominionsword.config.mod.pomkots": "Pomkots Mechs",
+  "screen.dominionsword.config.mod.pomkots.tooltip": "統御の剣：Pomkots Mechs 互換が提供する設定を表示。",
+  "screen.dominionsword.pomkots.disable_weapon_block_destruction": "武器の地形破壊を無効化：%s",
+  "screen.dominionsword.pomkots.disable_weapon_block_destruction.tooltip": "Pomkots 武器による爆発と直接的なブロック破壊を防止します。建設・解体用の工程装備は対象外です。管理者専用。"
+}
