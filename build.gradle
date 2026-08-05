@@ -58,6 +58,7 @@ dependencies {
 mixin { add sourceSets.main, 'dominionsword_pomkotsmechs_compat.refmap.json' }
 
 tasks.named('processResources', ProcessResources).configure {
+    filteringCharset = 'UTF-8'
     def props = [minecraft_version_range: minecraft_version_range, forge_version_range: forge_version_range,
                  loader_version_range: loader_version_range, mod_id: mod_id, mod_name: mod_name,
                  mod_license: mod_license, mod_version: mod_version, mod_authors: mod_authors,
