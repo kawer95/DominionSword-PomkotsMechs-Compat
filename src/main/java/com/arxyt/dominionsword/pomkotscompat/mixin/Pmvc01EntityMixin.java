@@ -74,9 +74,8 @@ public abstract class Pmvc01EntityMixin {
     }
 
     /**
-     * PMVC01's native aim always adds exactly four ticks of target velocity, regardless of
-     * projectile speed, and includes the target's vertical velocity. That sends fast machine
-     * gun rounds too far ahead and makes shots alternate between the feet and above the head.
+     * PMVC01's native aim always adds exactly four ticks of target velocity. Dominion control
+     * deliberately uses direct fire at the target's current hitbox center instead.
      */
     @Inject(
             method = "getShootingAngle(Lnet/minecraft/world/entity/Entity;ZZ)[F",
@@ -94,47 +93,14 @@ public abstract class Pmvc01EntityMixin {
         var key = BuiltInRegistries.ENTITY_TYPE.getKey(projectile.getType());
         if (key == null || !"pomkotsmechs".equals(key.getNamespace())) return;
         String projectileId = key.getPath();
-        double speed;
-        if (projectileId.startsWith("bulletmachine")) speed = 6.0D;
-        else if (projectileId.startsWith("bulletgrenade")) speed = 5.0D;
-        else return;
+        if (!projectileId.startsWith("bulletmachine") && !projectileId.startsWith("bulletgrenade")) return;
 
         Vec3 origin = projectile.position();
-        Vec3 targetCenter = target.getBoundingBox().getCenter();
-        // Horizontal prediction is useful, but vertical velocity is commonly a one-tick jump,
-        // fall or knockback impulse and was the main cause of foot/head misses.
-        Vec3 targetVelocity = target.getDeltaMovement().multiply(1.0D, 0.0D, 1.0D);
-        double horizontalSpeed = Math.sqrt(targetVelocity.x * targetVelocity.x + targetVelocity.z * targetVelocity.z);
-        if (horizontalSpeed > 1.25D) targetVelocity = targetVelocity.scale(1.25D / horizontalSpeed);
-        double flightTicks = dominion$interceptTime(targetCenter.subtract(origin), targetVelocity, speed);
-        Vec3 aimPoint = targetCenter.add(targetVelocity.scale(flightTicks));
-        Vec3 direction = aimPoint.subtract(origin).normalize();
+        Vec3 direction = target.getBoundingBox().getCenter().subtract(origin).normalize();
         double horizontal = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
         float pitch = (float) -Math.toDegrees(Math.atan2(direction.y, horizontal));
         float yaw = (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
         cir.setReturnValue(new float[]{pitch, yaw});
-    }
-
-    @Unique
-    private static double dominion$interceptTime(Vec3 relative, Vec3 velocity, double projectileSpeed) {
-        double a = velocity.lengthSqr() - projectileSpeed * projectileSpeed;
-        double b = 2.0D * relative.dot(velocity);
-        double c = relative.lengthSqr();
-        double time = -1.0D;
-        if (Math.abs(a) < 1.0E-7D) {
-            if (Math.abs(b) > 1.0E-7D) time = -c / b;
-        } else {
-            double discriminant = b * b - 4.0D * a * c;
-            if (discriminant >= 0.0D) {
-                double root = Math.sqrt(discriminant);
-                double first = (-b - root) / (2.0D * a);
-                double second = (-b + root) / (2.0D * a);
-                if (first > 0.0D) time = first;
-                if (second > 0.0D && (time < 0.0D || second < time)) time = second;
-            }
-        }
-        if (!(time > 0.0D) || !Double.isFinite(time)) time = Math.sqrt(c) / projectileSpeed;
-        return Math.min(time, 20.0D);
     }
 
     @Inject(
