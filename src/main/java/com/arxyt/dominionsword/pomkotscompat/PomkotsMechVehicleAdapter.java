@@ -13,6 +13,8 @@ import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.Pmv03pEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
+import grcmcs.minecraft.mods.pomkotsmechs.entity.projectile.custom.PomkotsCustomThrowableProjectile;
+import grcmcs.minecraft.mods.pomkotsmechs.items.parts.BasePartsItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -239,13 +241,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         double distance = vehicle.distanceTo(target);
         List<WeaponSlot> melee = meleeWeapons(mech);
         List<WeaponSlot> ranged = rangedWeapons(mech);
+        double maximumRangedDistance = maximumRangedDistance(mech);
         long traceNow = mech.level().getGameTime();
         if (traceNow >= state.nextTraceTick) {
             MechControlBridge bridge = (MechControlBridge) mech;
             DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-COMBAT] mech={} target={} distance={} lineOfSight={} mainMode={} melee={} ranged={} ammo={} appliedInput={}",
+                    "[DS-POMKOTS-COMBAT] mech={} target={} distance={} maxRange={} lineOfSight={} mainMode={} melee={} ranged={} ammo={} appliedInput={}",
                     BuiltInRegistries.ENTITY_TYPE.getKey(mech.getType()), target.getType().toString(),
-                    String.format(Locale.ROOT, "%.2f", distance), mech.hasLineOfSight(target), mech.isMainMode(),
+                    String.format(Locale.ROOT, "%.2f", distance),
+                    String.format(Locale.ROOT, "%.2f", maximumRangedDistance),
+                    mech.hasLineOfSight(target), mech.isMainMode(),
                     melee.stream().map(WeaponSlot::itemId).toList(), ranged.stream().map(WeaponSlot::itemId).toList(),
                     mech instanceof Pmvc01Entity custom ? customAmmoStatus(custom) : "native",
                     bridge.dominion$getLastAppliedDriverInput());
@@ -274,7 +279,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (ranged.isEmpty()) {
             if (mech instanceof Pmvc01Entity custom && hasAutomaticEquipment(custom)) {
                 Vec3 away = flatAway(target.position(), vehicle.position());
-                if (distance > RANGED_MAX_RANGE || !mech.hasLineOfSight(target)) {
+                if (distance > maximumRangedDistance || !mech.hasLineOfSight(target)) {
                     return driveTo(vehicle, target.position().add(away.scale(RANGED_PREFERRED_RANGE)), true);
                 }
                 if (distance < RANGED_MIN_RANGE) {
@@ -292,7 +297,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return true;
         }
         Vec3 away = flatAway(target.position(), vehicle.position());
-        if (distance > RANGED_MAX_RANGE || !mech.hasLineOfSight(target)) {
+        if (distance > maximumRangedDistance || !mech.hasLineOfSight(target)) {
             return driveTo(vehicle, target.position().add(away.scale(RANGED_PREFERRED_RANGE)), true);
         }
         if (distance < RANGED_MIN_RANGE) {
@@ -688,6 +693,25 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
         }
         return result;
+    }
+
+    private static double maximumRangedDistance(PomkotsVehicleBase mech) {
+        if (!(mech instanceof Pmvc01Entity custom)) return RANGED_MAX_RANGE;
+        double maximum = RANGED_MAX_RANGE;
+        for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER,
+                Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER}) {
+            ItemStack stack = weapon(custom, slot);
+            if (!"suwa".equals(itemId(stack)) || !hasUsableAmmo(custom, slot)
+                    || !(stack.getItem() instanceof BasePartsItem.Weapon weapon)) continue;
+            for (int distance = 256; distance > RANGED_MAX_RANGE; distance--) {
+                if (weapon.getCurrentRange(distance)
+                        != PomkotsCustomThrowableProjectile.RangeCategory.OUT) {
+                    maximum = Math.max(maximum, distance);
+                    break;
+                }
+            }
+        }
+        return maximum;
     }
 
     private static boolean scheduleAutomaticEquipment(PomkotsVehicleBase mech, LivingEntity target,
