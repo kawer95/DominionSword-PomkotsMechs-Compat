@@ -1,11 +1,13 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
+import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.npc.pilot.ai.MechAutoController;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,6 +30,27 @@ public abstract class Pmvc01EntityMixin {
         if (current instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech)) {
             dominion$trackedPilot = mob;
         }
+    }
+
+    /**
+     * PMVC01 overrides PomkotsVehicleBase.travel and calls travelBypass directly, so the base
+     * vehicle mixin never gets a chance to copy Dominion's control frame to a Mob pilot.
+     */
+    @Inject(
+            method = {"travel(Lnet/minecraft/world/phys/Vec3;)V", "m_7023_(Lnet/minecraft/world/phys/Vec3;)V"},
+            at = @At("HEAD"), remap = false, require = 0
+    )
+    private void dominion$applyUnitPilotInput(Vec3 travelVector, CallbackInfo ci) {
+        MechControlFrame frame = ((MechControlBridge) this).dominion$getControlFrame();
+        if (frame == null || !frame.active()) return;
+        Entity pilot = ((Pmvc01Entity) (Object) this).getDrivingPassenger();
+        if (!(pilot instanceof Mob mob)) return;
+        mob.zza = frame.forward();
+        mob.xxa = frame.strafe();
+        mob.setYRot(frame.yaw());
+        mob.setYHeadRot(frame.yaw());
+        mob.yBodyRot = frame.yaw();
+        mob.setXRot(frame.pitch());
     }
 
     @Redirect(

@@ -1,3 +1,8 @@
+# 1.7.5
+
+- Applies Dominion movement frames inside PMVC01's overridden travel method so a Mob pilot can actually move and turn the custom mech.
+- Preserves PMVC01's native chassis, generator and fuel requirements.
+
 # 1.7.4
 
 - Adds Simplified Chinese localization for PMVC01 weapons, ammunition, chassis parts, generators, boosters, extensions, workbench controls, statistics and status messages.
