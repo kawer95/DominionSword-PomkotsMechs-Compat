@@ -304,7 +304,14 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
         aimAt(pilot, target.getBoundingBox().getCenter());
         setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
-        if (PULSES.containsKey(mech.getUUID())) return true;
+        PendingPulse activePulse = PULSES.get(mech.getUUID());
+        if (activePulse != null) {
+            WeaponSlot primary = ranged.get(0);
+            if (activePulse.allowConcurrentPrimary && !primary.multiLock()) {
+                activePulse.concurrentPrimaryBits = (short) (primary.bit() | LOCK);
+            }
+            return true;
+        }
         long now = mech.level().getGameTime();
         if (scheduleAutomaticEquipment(mech, target, state, now, ranged.get(0))) return true;
         WeaponSlot weapon = ranged.get(0);
@@ -475,6 +482,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                                 AUTO_AUXILIARY_READY_TICKS.put(id, serverTick + pulse.cooldownTicksAfter);
                             }
                         }
+                        if (pulse.allowConcurrentPrimary && pulse.concurrentPrimaryBits != 0) {
+                            submit(mech, pulse.concurrentPrimaryBits);
+                        }
                         continue;
                     }
                     if (pulse.waitingForReload) {
@@ -484,7 +494,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                         pulse.waitingForReload = false;
                     }
                 }
-                if (pulse.remainingTicks > 1) submit(mech, pulse.bits);
+                if (pulse.remainingTicks > 1) {
+                    submit(mech, (short) (pulse.bits | pulse.concurrentPrimaryBits));
+                }
                 else submit(mech, (short)0);
                 if (--pulse.remainingTicks <= 0) {
                     PULSES.remove(id);
@@ -748,7 +760,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         int pressTicks = shoulderGatling ? 20 * 20 : auxiliary.continuous() ? 10 : 1;
         int cooldownTicksAfter = shoulderGatling ? 20 * 20 : 0;
         PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), pressTicks,
-                auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0));
+                auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0, shoulderGatling));
         DominionSwordPomkotsCompatMod.LOGGER.info(
                 "[DominionSword Pomkots Compat] PMVC automatic shoulder weapon scheduled: mech={}, weapon={}, slot={}, bit={}, bullets={}, magazines={}, waitingForReload={}",
                 mech.getUUID(), auxiliary.itemId(), auxiliary.inventorySlot(), auxiliary.bit(), ammo.getBulletNum(),
@@ -1037,17 +1049,19 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
     private static final class PendingPulse {
         final short bits; int remainingTicks; final int ammoSlot; final int cooldownTicksAfter;
-        boolean waitingForReload;
+        final boolean allowConcurrentPrimary;
+        boolean waitingForReload; short concurrentPrimaryBits;
         PendingPulse(short bits, int pressTicks) {
-            this(bits, pressTicks, -1, 0, false);
+            this(bits, pressTicks, -1, 0, false, false);
         }
         PendingPulse(short bits, int pressTicks, int ammoSlot, int cooldownTicksAfter,
-                     boolean waitingForReload) {
+                     boolean waitingForReload, boolean allowConcurrentPrimary) {
             this.bits = bits;
             this.remainingTicks = Math.max(1, pressTicks) + 1;
             this.ammoSlot = ammoSlot;
             this.cooldownTicksAfter = cooldownTicksAfter;
             this.waitingForReload = waitingForReload;
+            this.allowConcurrentPrimary = allowConcurrentPrimary;
         }
     }
     private static final class CombatState {
