@@ -245,10 +245,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (traceNow >= state.nextTraceTick) {
             MechControlBridge bridge = (MechControlBridge) mech;
             DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-COMBAT] mech={} target={} distance={} lineOfSight={} mainMode={} melee={} ranged={} appliedInput={}",
+                    "[DS-POMKOTS-COMBAT] mech={} target={} distance={} lineOfSight={} mainMode={} melee={} ranged={} ammo={} appliedInput={}",
                     BuiltInRegistries.ENTITY_TYPE.getKey(mech.getType()), target.getType().toString(),
                     String.format(Locale.ROOT, "%.2f", distance), mech.hasLineOfSight(target), mech.isMainMode(),
                     melee.stream().map(WeaponSlot::itemId).toList(), ranged.stream().map(WeaponSlot::itemId).toList(),
+                    mech instanceof Pmvc01Entity custom ? customAmmoStatus(custom) : "native",
                     bridge.dominion$getLastAppliedDriverInput());
             state.nextTraceTick = traceNow + 40L;
         }
@@ -273,6 +274,22 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
 
         if (ranged.isEmpty()) {
+            if (mech instanceof Pmvc01Entity custom && hasAutomaticEquipment(custom)) {
+                Vec3 away = flatAway(target.position(), vehicle.position());
+                if (distance > RANGED_MAX_RANGE || !mech.hasLineOfSight(target)) {
+                    return driveTo(vehicle, target.position().add(away.scale(RANGED_PREFERRED_RANGE)), true);
+                }
+                if (distance < RANGED_MIN_RANGE) {
+                    return driveTo(vehicle, target.position().add(away.scale(RANGED_MIN_RANGE + 4.0D)), true);
+                }
+                aimAt(pilot, target.getBoundingBox().getCenter());
+                setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
+                if (!PULSES.containsKey(mech.getUUID())) {
+                    scheduleAutomaticEquipment(mech, target, state, mech.level().getGameTime(), null);
+                }
+                ACTIVE.add(mech.getUUID());
+                return true;
+            }
             stopMovement(mech);
             return true;
         }
@@ -703,6 +720,28 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         AUTO_AUXILIARY_READY_TICKS.put(mechId, now + (auxiliary.continuous()
                 ? AUTO_CONTINUOUS_EQUIPMENT_INTERVAL : AUTO_ORDNANCE_INTERVAL));
         return true;
+    }
+
+    private static boolean hasAutomaticEquipment(Pmvc01Entity mech) {
+        for (int slot : weaponSlots()) {
+            String id = itemId(weapon(mech, slot));
+            if (!id.isBlank() && !ENGINEERING_WEAPONS.contains(id) && !GROUND_SKILL_WEAPONS.contains(id)
+                    && !MELEE_WEAPONS.contains(id)) return true;
+        }
+        return false;
+    }
+
+    private static String customAmmoStatus(Pmvc01Entity mech) {
+        List<String> status = new ArrayList<>();
+        for (int slot : weaponSlots()) {
+            String weaponId = itemId(weapon(mech, slot));
+            if (weaponId.isBlank()) continue;
+            Pmvc01Entity.AmmoManager ammo = mech.getAmmoManager(slot);
+            String ammoId = itemId(mech.getItem(slot + 6));
+            status.add(weaponId + "=" + ammo.getBulletNum() + "/" + ammo.getBulletNumPerMagazine()
+                    + "+" + ammo.getMagazineNum() + "x" + (ammoId.isBlank() ? "empty" : ammoId));
+        }
+        return status.toString();
     }
 
     private static void prepareCustomMultiLock(Pmvc01Entity mech, int slot, Entity target) {

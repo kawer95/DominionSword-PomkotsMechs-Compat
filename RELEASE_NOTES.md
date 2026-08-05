@@ -1,3 +1,8 @@
+# 1.7.3
+
+- Allows PMVC01 loadouts with only automatic shoulder equipment to acquire range and fire instead of being treated as unarmed.
+- Adds per-slot PMVC01 weapon, chamber, magazine and ammunition-item state to the throttled combat diagnostic log.
+
 # 1.7.2
 
 - Restores a Dominion pilot's exact pre-boarding AI state after leaving PMVC01, including forced dismount and destroyed-mech paths.
