@@ -1,3 +1,7 @@
+# 1.7.4
+
+- Adds Simplified Chinese localization for PMVC01 weapons, ammunition, chassis parts, generators, boosters, extensions, workbench controls, statistics and status messages.
+
 # 1.7.3
 
 - Allows PMVC01 loadouts with only automatic shoulder equipment to acquire range and fire instead of being treated as unarmed.
