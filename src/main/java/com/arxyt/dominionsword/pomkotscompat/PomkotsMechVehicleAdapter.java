@@ -27,8 +27,6 @@ import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.pathfinder.Node;
-import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -608,30 +606,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         return route;
     }
 
-    /**
-     * Uses the mounted unit's vanilla Mob navigation to choose walkable nodes.  Pomkots mechs
-     * are LivingEntity vehicles rather than Mob instances, so the pilot supplies biological
-     * pathfinding while the adapter translates each node into mech driver input.
-     */
     private static MechPathPlanner.Route planPilotRoute(Entity vehicle, Vec3 target) {
-        LivingEntity passenger = driver(vehicle);
-        if (!(passenger instanceof Mob pilot) || target == null) {
-            return new MechPathPlanner.Route(List.of());
-        }
-        Path path = pilot.getNavigation().createPath(BlockPos.containing(target), 0);
-        if (path == null || path.getNodeCount() == 0) {
-            return new MechPathPlanner.Route(List.of());
-        }
-        List<MechPathPlanner.RoutePoint> points = new ArrayList<>(path.getNodeCount() + 1);
-        points.add(new MechPathPlanner.RoutePoint(vehicle.position(), false));
-        for (int i = 0; i < path.getNodeCount(); i++) {
-            Node node = path.getNode(i);
-            Vec3 position = new Vec3(node.x + 0.5D, node.y, node.z + 0.5D);
-            if (flatDistance(points.get(points.size() - 1).position(), position) > 0.2D) {
-                points.add(new MechPathPlanner.RoutePoint(position, false));
-            }
-        }
-        return new MechPathPlanner.Route(points);
+        if (target == null) return new MechPathPlanner.Route(List.of());
+        return MechPathPlanner.plan(vehicle, target);
     }
 
     private static List<WeaponSlot> meleeWeapons(PomkotsVehicleBase mech) {
@@ -704,10 +681,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
         if (!(mech instanceof Pmvc01Entity custom)) return false;
         List<WeaponSlot> equipment = new ArrayList<>();
-        for (int slot : weaponSlots()) {
+        for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER, Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER}) {
             String id = itemId(weapon(custom, slot));
             if (id.isBlank() || ENGINEERING_WEAPONS.contains(id) || GROUND_SKILL_WEAPONS.contains(id)
-                    || MELEE_WEAPONS.contains(id) || primary != null && primary.inventorySlot() == slot) continue;
+                    || MELEE_WEAPONS.contains(id) || primary != null && primary.inventorySlot() == slot
+                    || !hasUsableAmmo(custom, slot)) continue;
             boolean continuous = "suwa".equals(id) || "shinobazu".equals(id) || "kasumi".equals(id);
             boolean multiLock = Pmvc01Entity.getMultiLockTargetNum(weapon(custom, slot)) > 0;
             equipment.add(new WeaponSlot(bitForSlot(slot), slot, id, continuous, false, multiLock));
@@ -722,11 +700,17 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         return true;
     }
 
+    private static boolean hasUsableAmmo(Pmvc01Entity mech, int weaponSlot) {
+        Pmvc01Entity.AmmoManager ammo = mech.getAmmoManager(weaponSlot);
+        return ammo.getBulletNumPerMagazine() > 0
+                && (ammo.getBulletNum() > 0 || ammo.getMagazineNum() > 0);
+    }
+
     private static boolean hasAutomaticEquipment(Pmvc01Entity mech) {
-        for (int slot : weaponSlots()) {
+        for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER, Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER}) {
             String id = itemId(weapon(mech, slot));
             if (!id.isBlank() && !ENGINEERING_WEAPONS.contains(id) && !GROUND_SKILL_WEAPONS.contains(id)
-                    && !MELEE_WEAPONS.contains(id)) return true;
+                    && !MELEE_WEAPONS.contains(id) && hasUsableAmmo(mech, slot)) return true;
         }
         return false;
     }

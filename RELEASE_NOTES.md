@@ -1,3 +1,8 @@
+# 1.7.6
+
+- Replaces passenger navigation with the add-on's mech-footprint A* so a mounted NoAI pilot no longer produces an empty movement route.
+- Restricts periodic PMVC01 equipment fire to shoulder weapons and skips weapons whose ammunition slot is empty or contains a mismatched magazine.
+
 # 1.7.5
 
 - Applies Dominion movement frames inside PMVC01's overridden travel method so a Mob pilot can actually move and turn the custom mech.
