@@ -65,6 +65,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final Map<UUID, PendingPulse> PULSES = new ConcurrentHashMap<>();
     private static final Map<UUID, CombatState> COMBAT = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> AUTO_AUXILIARY_READY_TICKS = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> SUWA_BURST_REMAINING_TICKS = new ConcurrentHashMap<>();
     private static final Map<SkillCooldownKey, Long> SKILL_COOLDOWNS = new ConcurrentHashMap<>();
     private static final Map<UUID, GroundMarker> GROUND_MARKERS = new ConcurrentHashMap<>();
     private static final Set<UUID> ACTIVE = ConcurrentHashMap.newKeySet();
@@ -456,10 +457,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (combat != null) {
                 Entity combatTarget = find(server, combat.target);
                 if (!(combatTarget instanceof LivingEntity livingTarget) || !livingTarget.isAlive()
-                        || serverTick > combat.lastAttackTick + 1L) {
+                        || serverTick > combat.lastAttackTick + 20L) {
                     submit(mech, (short)0);
                     mech.getLockTargets().clearLockTargets();
-                    PULSES.remove(id);
+                    cancelPulse(id, "combat interrupted");
                     COMBAT.remove(id, combat);
                 }
             }
@@ -477,10 +478,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                                     mech.getUUID(), pulse.ammoSlot, ammo.getMagazineNum());
                         } else if (!ammo.isReloading() && ammo.getMagazineNum() <= 0) {
                             submit(mech, (short) 0);
-                            PULSES.remove(id);
-                            if (pulse.cooldownTicksAfter > 0) {
-                                AUTO_AUXILIARY_READY_TICKS.put(id, serverTick + pulse.cooldownTicksAfter);
-                            }
+                            cancelPulse(id, "out of ammunition");
                         }
                         if (pulse.allowConcurrentPrimary && pulse.concurrentPrimaryBits != 0) {
                             submit(mech, pulse.concurrentPrimaryBits);
@@ -499,10 +497,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 }
                 else submit(mech, (short)0);
                 if (--pulse.remainingTicks <= 0) {
-                    PULSES.remove(id);
-                    if (pulse.cooldownTicksAfter > 0) {
-                        AUTO_AUXILIARY_READY_TICKS.put(id, serverTick + pulse.cooldownTicksAfter);
-                    }
+                    completePulse(id, serverTick);
+                } else if (pulse.accumulatesFiringTime) {
+                    SUWA_BURST_REMAINING_TICKS.put(id, Math.max(0, pulse.remainingTicks - 1));
                 }
             }
         }
@@ -757,8 +754,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 ? auxiliary.inventorySlot() : -1;
         if (waitingAmmoSlot >= 0 && !ammo.isReloading()) ammo.startReload();
         boolean shoulderGatling = "suwa".equals(auxiliary.itemId());
-        int pressTicks = shoulderGatling ? 20 * 20 : auxiliary.continuous() ? 10 : 1;
+        int pressTicks = shoulderGatling
+                ? SUWA_BURST_REMAINING_TICKS.getOrDefault(mechId, 20 * 20)
+                : auxiliary.continuous() ? 10 : 1;
         int cooldownTicksAfter = shoulderGatling ? 20 * 20 : 0;
+        if (shoulderGatling) SUWA_BURST_REMAINING_TICKS.put(mechId, pressTicks);
         PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), pressTicks,
                 auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0, shoulderGatling));
         DominionSwordPomkotsCompatMod.LOGGER.info(
@@ -990,6 +990,27 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         ((MechControlBridge)mech).dominion$queueDriverInput(bits);
     }
 
+    private static void cancelPulse(UUID vehicleId, String reason) {
+        PendingPulse pulse = PULSES.remove(vehicleId);
+        if (pulse == null || !pulse.accumulatesFiringTime) return;
+        int remaining = SUWA_BURST_REMAINING_TICKS.getOrDefault(vehicleId,
+                Math.max(0, pulse.remainingTicks - 1));
+        DominionSwordPomkotsCompatMod.LOGGER.info(
+                "[DominionSword Pomkots Compat] PMVC shoulder burst paused: mech={}, reason={}, remainingFireTicks={}",
+                vehicleId, reason, remaining);
+    }
+
+    private static void completePulse(UUID vehicleId, long now) {
+        PendingPulse pulse = PULSES.remove(vehicleId);
+        if (pulse == null || pulse.cooldownTicksAfter <= 0) return;
+        SUWA_BURST_REMAINING_TICKS.remove(vehicleId);
+        long readyAt = now + pulse.cooldownTicksAfter;
+        AUTO_AUXILIARY_READY_TICKS.merge(vehicleId, readyAt, Math::max);
+        DominionSwordPomkotsCompatMod.LOGGER.info(
+                "[DominionSword Pomkots Compat] PMVC shoulder burst completed: mech={}, cooldownTicks={}, readyAt={}",
+                vehicleId, pulse.cooldownTicksAfter, readyAt);
+    }
+
     private static void ensureGroundMode(Entity vehicle) {
         if (vehicle instanceof Pmv03pEntity pmv03p && pmv03p.isMainMode()) {
             pmv03p.setDriverInput(new DriverInput(MODE));
@@ -1016,7 +1037,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
         }
         UUID id = vehicle.getUUID();
-        ACTIVE.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
+        ACTIVE.remove(id); JUMPS.remove(id); cancelPulse(id, "control stopped"); COMBAT.remove(id);
         if (clearTasks) ROUTES.remove(id);
     }
 
@@ -1031,6 +1052,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static void cleanup(UUID id) {
         ACTIVE.remove(id); ROUTES.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
         AUTO_AUXILIARY_READY_TICKS.remove(id);
+        SUWA_BURST_REMAINING_TICKS.remove(id);
         SKILL_COOLDOWNS.keySet().removeIf(key -> key.vehicleId().equals(id));
     }
 
@@ -1049,7 +1071,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
     private static final class PendingPulse {
         final short bits; int remainingTicks; final int ammoSlot; final int cooldownTicksAfter;
-        final boolean allowConcurrentPrimary;
+        final boolean allowConcurrentPrimary, accumulatesFiringTime;
         boolean waitingForReload; short concurrentPrimaryBits;
         PendingPulse(short bits, int pressTicks) {
             this(bits, pressTicks, -1, 0, false, false);
@@ -1062,6 +1084,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             this.cooldownTicksAfter = cooldownTicksAfter;
             this.waitingForReload = waitingForReload;
             this.allowConcurrentPrimary = allowConcurrentPrimary;
+            this.accumulatesFiringTime = allowConcurrentPrimary;
         }
     }
     private static final class CombatState {
