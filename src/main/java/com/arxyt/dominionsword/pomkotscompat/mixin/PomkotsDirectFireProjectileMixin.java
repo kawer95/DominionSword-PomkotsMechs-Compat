@@ -1,7 +1,6 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
-import com.arxyt.dominionsword.pomkotscompat.debug.PomkotsAimDebug;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
@@ -26,27 +25,14 @@ public abstract class PomkotsDirectFireProjectileMixin {
         boolean machineGun = projectileId.startsWith("bulletmachine") && inaccuracy >= 1.5F;
         boolean directGrenade = projectileId.startsWith("bulletgrenade");
         if (!machineGun && !directGrenade) return;
-        boolean sampledWithoutMech = !projectile.level().isClientSide
-                && (directGrenade || projectile.level().getGameTime() % 20L == 0L);
-
         Entity owner = projectile.getOwner();
         Pmvc01Entity mech = owner instanceof Pmvc01Entity custom ? custom
                 : owner != null && owner.getVehicle() instanceof Pmvc01Entity custom ? custom : null;
-        if (mech == null) {
-            if (sampledWithoutMech) PomkotsAimDebug.skipped(projectile, "owner is not a riding PMVC01 pilot");
-            return;
-        }
-        boolean trace = PomkotsAimDebug.shouldTrace(projectile, mech, directGrenade);
+        if (mech == null) return;
         Entity driver = mech.getDrivingPassenger();
-        if (!(driver instanceof Mob mob) || !PomkotsPilotState.belongsTo(mob, mech)) {
-            if (trace) PomkotsAimDebug.skipped(projectile, "PMVC01 driver is not a Dominion pilot");
-            return;
-        }
+        if (!(driver instanceof Mob mob) || !PomkotsPilotState.belongsTo(mob, mech)) return;
         Entity target = mech.getLockTargets().getLockTargetHard();
-        if (target == null || !target.isAlive()) {
-            if (trace) PomkotsAimDebug.skipped(projectile, "hard-lock target is missing or dead");
-            return;
-        }
+        if (target == null || !target.isAlive()) return;
 
         Vec3 origin = projectile.position();
         Vec3 targetCenter = target.getBoundingBox().getCenter();
@@ -57,12 +43,8 @@ public abstract class PomkotsDirectFireProjectileMixin {
                 Math.max(0.1D, velocity));
         Vec3 direction = targetCenter.add(targetVelocity.scale(flightTicks)).subtract(origin);
         if (direction.lengthSqr() > 1.0E-6D) {
-            Vec3 nativeVelocity = projectile.getDeltaMovement();
             Vec3 correctedVelocity = direction.normalize().scale(velocity);
             projectile.setDeltaMovement(correctedVelocity);
-            if (trace) PomkotsAimDebug.begin(projectile, mech, target, nativeVelocity, correctedVelocity);
-        } else if (trace) {
-            PomkotsAimDebug.skipped(projectile, "muzzle is already at target center");
         }
     }
 
