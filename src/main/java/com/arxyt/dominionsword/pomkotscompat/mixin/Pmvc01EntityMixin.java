@@ -5,6 +5,7 @@ import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.npc.pilot.ai.MechAutoController;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Pmvc01Entity.class)
 public abstract class Pmvc01EntityMixin {
@@ -69,6 +71,70 @@ public abstract class Pmvc01EntityMixin {
         if (!bridge.dominion$getControlFrame().active()) {
             controller.tick();
         }
+    }
+
+    /**
+     * PMVC01's native aim always adds exactly four ticks of target velocity, regardless of
+     * projectile speed, and includes the target's vertical velocity. That sends fast machine
+     * gun rounds too far ahead and makes shots alternate between the feet and above the head.
+     */
+    @Inject(
+            method = "getShootingAngle(Lnet/minecraft/world/entity/Entity;ZZ)[F",
+            at = @At("HEAD"), cancellable = true, remap = false, require = 0
+    )
+    private void dominion$aimAutomaticDirectFire(Entity projectile, boolean useTarget, boolean useDeviation,
+                                                  CallbackInfoReturnable<float[]> cir) {
+        if (!useTarget) return;
+        Pmvc01Entity mech = (Pmvc01Entity) (Object) this;
+        Entity driver = mech.getDrivingPassenger();
+        if (!(driver instanceof Mob mob) || !PomkotsPilotState.belongsTo(mob, mech)) return;
+        Entity target = mech.getLockTargets().getLockTargetHard();
+        if (target == null || !target.isAlive()) return;
+
+        var key = BuiltInRegistries.ENTITY_TYPE.getKey(projectile.getType());
+        if (key == null || !"pomkotsmechs".equals(key.getNamespace())) return;
+        String projectileId = key.getPath();
+        double speed;
+        if (projectileId.startsWith("bulletmachine")) speed = 6.0D;
+        else if (projectileId.startsWith("bulletgrenade")) speed = 5.0D;
+        else return;
+
+        Vec3 origin = projectile.position();
+        Vec3 targetCenter = target.getBoundingBox().getCenter();
+        // Horizontal prediction is useful, but vertical velocity is commonly a one-tick jump,
+        // fall or knockback impulse and was the main cause of foot/head misses.
+        Vec3 targetVelocity = target.getDeltaMovement().multiply(1.0D, 0.0D, 1.0D);
+        double horizontalSpeed = Math.sqrt(targetVelocity.x * targetVelocity.x + targetVelocity.z * targetVelocity.z);
+        if (horizontalSpeed > 1.25D) targetVelocity = targetVelocity.scale(1.25D / horizontalSpeed);
+        double flightTicks = dominion$interceptTime(targetCenter.subtract(origin), targetVelocity, speed);
+        Vec3 aimPoint = targetCenter.add(targetVelocity.scale(flightTicks));
+        Vec3 direction = aimPoint.subtract(origin).normalize();
+        double horizontal = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+        float pitch = (float) -Math.toDegrees(Math.atan2(direction.y, horizontal));
+        float yaw = (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
+        cir.setReturnValue(new float[]{pitch, yaw});
+    }
+
+    @Unique
+    private static double dominion$interceptTime(Vec3 relative, Vec3 velocity, double projectileSpeed) {
+        double a = velocity.lengthSqr() - projectileSpeed * projectileSpeed;
+        double b = 2.0D * relative.dot(velocity);
+        double c = relative.lengthSqr();
+        double time = -1.0D;
+        if (Math.abs(a) < 1.0E-7D) {
+            if (Math.abs(b) > 1.0E-7D) time = -c / b;
+        } else {
+            double discriminant = b * b - 4.0D * a * c;
+            if (discriminant >= 0.0D) {
+                double root = Math.sqrt(discriminant);
+                double first = (-b - root) / (2.0D * a);
+                double second = (-b + root) / (2.0D * a);
+                if (first > 0.0D) time = first;
+                if (second > 0.0D && (time < 0.0D || second < time)) time = second;
+            }
+        }
+        if (!(time > 0.0D) || !Double.isFinite(time)) time = Math.sqrt(c) / projectileSpeed;
+        return Math.min(time, 20.0D);
     }
 
     @Inject(
