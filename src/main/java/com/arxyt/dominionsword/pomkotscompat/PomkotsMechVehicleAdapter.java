@@ -8,6 +8,7 @@ import com.arxyt.dominionsword.control.PlayerControl;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
 import com.arxyt.dominionsword.pomkotscompat.control.MechPathPlanner;
+import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.Pmv03pEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
@@ -155,10 +156,21 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
         if (occupant != null && occupant != unit) {
             if (!force || !(occupant instanceof Mob) || player == null || !player.getUUID().equals(PlayerControl.controller(occupant))) return false;
-            VehicleDismounts.dismount(vehicle, occupant);
+            if (!VehicleDismounts.dismount(vehicle, occupant)) return false;
+            PomkotsPilotState.restore((Mob) occupant);
         }
         ensureGroundMode(vehicle);
-        return unit.getVehicle() == vehicle || unit.startRiding(vehicle, true);
+        PomkotsPilotState.begin(unit, vehicle);
+        boolean boarded = unit.getVehicle() == vehicle || unit.startRiding(vehicle, true);
+        if (!boarded) {
+            PomkotsPilotState.restore(unit);
+            return false;
+        }
+        if (vehicle instanceof PomkotsVehicleBase mech) {
+            submit(mech, (short) 0);
+            ((MechControlBridge) mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
+        }
+        return true;
     }
 
     @Override
@@ -167,7 +179,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         LivingEntity passenger = driver(vehicle);
         if (passenger == null) return false;
         stop(vehicle, true);
-        return VehicleDismounts.dismount(vehicle, passenger);
+        boolean dismounted = VehicleDismounts.dismount(vehicle, passenger);
+        if (dismounted && passenger instanceof Mob mob) PomkotsPilotState.restore(mob);
+        return dismounted;
     }
 
     @Override

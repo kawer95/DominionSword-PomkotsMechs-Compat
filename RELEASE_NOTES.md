@@ -1,3 +1,9 @@
+# 1.7.2
+
+- Restores a Dominion pilot's exact pre-boarding AI state after leaving PMVC01, including forced dismount and destroyed-mech paths.
+- Prevents PMVC01's native mob autopilot from taking over Dominion pilots before their first command.
+- Clears stale driver input when boarding so the mech remains stationary until commanded.
+
 # 1.7.0
 
 - Migrates all command skills to collision-safe, namespaced identifiers required by Dominion Sword 1.24.0.
