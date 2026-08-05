@@ -307,15 +307,24 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
         PendingPulse activePulse = PULSES.get(mech.getUUID());
         if (activePulse != null) {
-            WeaponSlot primary = ranged.get(0);
+            WeaponSlot primary = selectPrimaryWeapon(ranged, state, mech.level().getGameTime());
             if (activePulse.allowConcurrentPrimary && !primary.multiLock()) {
                 activePulse.concurrentPrimaryBits = (short) (primary.bit() | LOCK);
             }
             return true;
         }
         long now = mech.level().getGameTime();
-        if (scheduleAutomaticEquipment(mech, target, state, now, ranged.get(0))) return true;
-        WeaponSlot weapon = ranged.get(0);
+        if (scheduleAutomaticEquipment(mech, target, state, now, ranged.get(0))) {
+            PendingPulse scheduledPulse = PULSES.get(mech.getUUID());
+            if (scheduledPulse != null && scheduledPulse.allowConcurrentPrimary) {
+                WeaponSlot primary = selectPrimaryWeapon(ranged, state, now);
+                if (!primary.multiLock()) {
+                    scheduledPulse.concurrentPrimaryBits = (short) (primary.bit() | LOCK);
+                }
+            }
+            return true;
+        }
+        WeaponSlot weapon = selectPrimaryWeapon(ranged, state, now);
         if (weapon.multiLock() && mech instanceof Pmvc01Entity custom && now >= state.nextPrimaryTick) {
             prepareCustomMultiLock(custom, weapon.inventorySlot(), target);
             PULSES.put(mech.getUUID(), new PendingPulse(weapon.bit(), 1));
@@ -700,7 +709,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 result.add(new WeaponSlot(bitForSlot(slot), slot, id, continuous, false, "uguisu".equals(id)));
             }
         }
+        result.sort(Comparator.comparing(WeaponSlot::continuous).reversed());
         return result;
+    }
+
+    private static WeaponSlot selectPrimaryWeapon(List<WeaponSlot> ranged, CombatState state, long now) {
+        if (ranged.size() <= 1 || now < state.nextSecondaryHandTick) return ranged.get(0);
+        int secondaryCount = ranged.size() - 1;
+        WeaponSlot selected = ranged.get(1 + Math.floorMod(state.handWeaponCursor++, secondaryCount));
+        state.nextSecondaryHandTick = now + 100L;
+        return selected;
     }
 
     private static double maximumRangedDistance(PomkotsVehicleBase mech) {
@@ -1090,10 +1108,12 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final class CombatState {
         UUID target;
         long nextPrimaryTick;
+        long nextSecondaryHandTick;
         long nextTraceTick;
         long lastAttackTick;
         int meleeCursor;
         int shoulderCursor;
+        int handWeaponCursor;
     }
     private record WeaponSlot(short bit, int inventorySlot, String itemId,
                               boolean continuous, boolean charge, boolean multiLock) {}
