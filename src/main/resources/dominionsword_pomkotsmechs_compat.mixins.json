@@ -4,6 +4,6 @@
   "package": "com.arxyt.dominionsword.pomkotscompat.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "dominionsword_pomkotsmechs_compat.refmap.json",
-  "mixins": ["PomkotsVehicleBaseMixin", "Pmvc01EntityMixin", "PomkotsBulletEntityMixin", "PomkotsMissileBaseEntityMixin", "PomkotsBlockDestructionMixin"],
+  "mixins": ["PomkotsVehicleBaseMixin", "Pmvc01EntityMixin", "PomkotsBulletEntityMixin", "PomkotsMissileBaseEntityMixin", "PomkotsBlockDestructionMixin", "PomkotsGroundTargetMissileMixin"],
   "injectors": { "defaultRequire": 1 }
 }
