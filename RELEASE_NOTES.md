@@ -1,3 +1,9 @@
+# 1.7.0
+
+- Migrates all command skills to collision-safe, namespaced identifiers required by Dominion Sword 1.24.0.
+- Declares flight-mode switching as a targetless toggle so it can participate in strict multi-selection skill intersection.
+- Retains point targeting for Vector Boost and ground weapons, which remain available only when a single mech is selected.
+
 # 1.6.5
 
 - Fixes Vector Boost bypassing Pomkots Mechs' native jump action by lifting the mech before its queued jump input was consumed.

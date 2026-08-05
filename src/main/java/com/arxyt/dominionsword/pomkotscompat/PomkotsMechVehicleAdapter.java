@@ -41,11 +41,13 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final short WEAPON_ARM_R = 64, WEAPON_ARM_L = 128, WEAPON_SHOULDER_R = 256,
             WEAPON_SHOULDER_L = 512, LOCK = 1024, MODE = 2048;
 
-    private static final String SKILL_VECTOR_BOOST = "pomkots_vector_boost",
-            SKILL_FLIGHT_MODE = "pomkots_flight_mode", SKILL_EVASION = "pomkots_evade",
+    private static final String SKILL_VECTOR_BOOST = "dominionsword_pomkotsmechs_compat:vector_boost",
+            SKILL_FLIGHT_MODE = "dominionsword_pomkotsmechs_compat:flight_mode",
+            SKILL_EVASION = "dominionsword_pomkotsmechs_compat:evade",
             ACTION_MODE = "pomkots_weapon_mode";
-    private static final String SKILL_DODO = "pomkots_ground_dodo",
-            SKILL_NOSURI = "pomkots_ground_nosuri", SKILL_MUKUDORI = "pomkots_ground_mukudori";
+    private static final String SKILL_DODO = "dominionsword_pomkotsmechs_compat:ground_dodo",
+            SKILL_NOSURI = "dominionsword_pomkotsmechs_compat:ground_nosuri",
+            SKILL_MUKUDORI = "dominionsword_pomkotsmechs_compat:ground_mukudori";
     private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
             RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
     private static final double VECTOR_BOOST_MAX_RANGE = 32.0D;
@@ -308,7 +310,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (actor instanceof Pmv03pEntity) {
             result.add(new SkillView(SKILL_FLIGHT_MODE,
                     "skill.dominionsword_pomkotsmechs_compat.flight_mode",
-                    "minecraft:textures/item/elytra.png", SkillType.INSTANT, true, 0, 0));
+                    "minecraft:textures/item/elytra.png", SkillType.TOGGLE, true, 0, 0));
         }
         long vectorNow = actor.level().getGameTime();
         int evasionRemaining = (int)Math.max(0L, SKILL_COOLDOWNS.getOrDefault(
