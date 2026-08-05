@@ -456,9 +456,38 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (jump != null && jump.manual) advanceJump(mech, jump);
             PendingPulse pulse = PULSES.get(id);
             if (pulse != null) {
+                if (pulse.ammoSlot >= 0 && mech instanceof Pmvc01Entity custom) {
+                    Pmvc01Entity.AmmoManager ammo = custom.getAmmoManager(pulse.ammoSlot);
+                    if (ammo.getBulletNum() <= 0) {
+                        if (!ammo.isReloading() && ammo.getMagazineNum() > 0) {
+                            ammo.startReload();
+                            DominionSwordPomkotsCompatMod.LOGGER.info(
+                                    "[DominionSword Pomkots Compat] PMVC shoulder reload started: mech={}, slot={}, magazines={}",
+                                    mech.getUUID(), pulse.ammoSlot, ammo.getMagazineNum());
+                        } else if (!ammo.isReloading() && ammo.getMagazineNum() <= 0) {
+                            submit(mech, (short) 0);
+                            PULSES.remove(id);
+                            if (pulse.cooldownTicksAfter > 0) {
+                                AUTO_AUXILIARY_READY_TICKS.put(id, serverTick + pulse.cooldownTicksAfter);
+                            }
+                        }
+                        continue;
+                    }
+                    if (pulse.waitingForReload) {
+                        DominionSwordPomkotsCompatMod.LOGGER.info(
+                                "[DominionSword Pomkots Compat] PMVC shoulder reload completed; firing: mech={}, slot={}, bullets={}",
+                                mech.getUUID(), pulse.ammoSlot, ammo.getBulletNum());
+                        pulse.waitingForReload = false;
+                    }
+                }
                 if (pulse.remainingTicks > 1) submit(mech, pulse.bits);
                 else submit(mech, (short)0);
-                if (--pulse.remainingTicks <= 0) PULSES.remove(id);
+                if (--pulse.remainingTicks <= 0) {
+                    PULSES.remove(id);
+                    if (pulse.cooldownTicksAfter > 0) {
+                        AUTO_AUXILIARY_READY_TICKS.put(id, serverTick + pulse.cooldownTicksAfter);
+                    }
+                }
             }
         }
     }
@@ -694,9 +723,23 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         WeaponSlot auxiliary = equipment.get(Math.floorMod(state.shoulderCursor++, equipment.size()));
         if (auxiliary.multiLock()) prepareCustomMultiLock(custom, auxiliary.inventorySlot(), target);
         else mech.getLockTargets().lockTargetHard(target);
-        PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), auxiliary.continuous() ? 10 : 1));
-        AUTO_AUXILIARY_READY_TICKS.put(mechId, now + (auxiliary.continuous()
-                ? AUTO_CONTINUOUS_EQUIPMENT_INTERVAL : AUTO_ORDNANCE_INTERVAL));
+        Pmvc01Entity.AmmoManager ammo = custom.getAmmoManager(auxiliary.inventorySlot());
+        int waitingAmmoSlot = ammo.getBulletNum() <= 0 && ammo.getMagazineNum() > 0
+                ? auxiliary.inventorySlot() : -1;
+        if (waitingAmmoSlot >= 0 && !ammo.isReloading()) ammo.startReload();
+        boolean shoulderGatling = "suwa".equals(auxiliary.itemId());
+        int pressTicks = shoulderGatling ? 20 * 20 : auxiliary.continuous() ? 10 : 1;
+        int cooldownTicksAfter = shoulderGatling ? 20 * 20 : 0;
+        PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), pressTicks,
+                auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0));
+        DominionSwordPomkotsCompatMod.LOGGER.info(
+                "[DominionSword Pomkots Compat] PMVC automatic shoulder weapon scheduled: mech={}, weapon={}, slot={}, bit={}, bullets={}, magazines={}, waitingForReload={}",
+                mech.getUUID(), auxiliary.itemId(), auxiliary.inventorySlot(), auxiliary.bit(), ammo.getBulletNum(),
+                ammo.getMagazineNum(), waitingAmmoSlot >= 0);
+        if (!shoulderGatling) {
+            AUTO_AUXILIARY_READY_TICKS.put(mechId, now + (auxiliary.continuous()
+                    ? AUTO_CONTINUOUS_EQUIPMENT_INTERVAL : AUTO_ORDNANCE_INTERVAL));
+        }
         return true;
     }
 
@@ -976,10 +1019,18 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
     }
     private static final class PendingPulse {
-        final short bits; int remainingTicks;
+        final short bits; int remainingTicks; final int ammoSlot; final int cooldownTicksAfter;
+        boolean waitingForReload;
         PendingPulse(short bits, int pressTicks) {
+            this(bits, pressTicks, -1, 0, false);
+        }
+        PendingPulse(short bits, int pressTicks, int ammoSlot, int cooldownTicksAfter,
+                     boolean waitingForReload) {
             this.bits = bits;
             this.remainingTicks = Math.max(1, pressTicks) + 1;
+            this.ammoSlot = ammoSlot;
+            this.cooldownTicksAfter = cooldownTicksAfter;
+            this.waitingForReload = waitingForReload;
         }
     }
     private static final class CombatState {
