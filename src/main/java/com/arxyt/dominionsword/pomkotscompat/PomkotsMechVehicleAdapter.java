@@ -13,8 +13,6 @@ import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.Pmv03pEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
-import grcmcs.minecraft.mods.pomkotsmechs.entity.projectile.custom.PomkotsCustomThrowableProjectile;
-import grcmcs.minecraft.mods.pomkotsmechs.items.parts.BasePartsItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -51,6 +49,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             SKILL_MUKUDORI = "dominionsword_pomkotsmechs_compat:ground_mukudori";
     private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
             RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
+    private static final double SUWA_MAX_RANGE = 64.0D;
     private static final double VECTOR_BOOST_MAX_RANGE = 32.0D;
     private static final int VECTOR_BOOST_COOLDOWN_TICKS = 600, EVASION_COOLDOWN_TICKS = 200;
     private static final long AUTO_CONTINUOUS_EQUIPMENT_INTERVAL = 1_200L;
@@ -701,14 +700,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         for (int slot : new int[]{Pmvc01Entity.INV_WEAPON_RIGHT_SHOULDER,
                 Pmvc01Entity.INV_WEAPON_LEFT_SHOULDER}) {
             ItemStack stack = weapon(custom, slot);
-            if (!"suwa".equals(itemId(stack)) || !hasUsableAmmo(custom, slot)
-                    || !(stack.getItem() instanceof BasePartsItem.Weapon weapon)) continue;
-            for (int distance = 256; distance > RANGED_MAX_RANGE; distance--) {
-                if (weapon.getCurrentRange(distance)
-                        != PomkotsCustomThrowableProjectile.RangeCategory.OUT) {
-                    maximum = Math.max(maximum, distance);
-                    break;
-                }
+            if ("suwa".equals(itemId(stack)) && hasUsableAmmo(custom, slot)) {
+                maximum = Math.max(maximum, SUWA_MAX_RANGE);
             }
         }
         return maximum;
