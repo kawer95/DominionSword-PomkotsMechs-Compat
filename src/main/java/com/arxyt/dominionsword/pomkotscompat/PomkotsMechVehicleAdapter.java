@@ -47,7 +47,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final String SKILL_DODO = "dominionsword_pomkotsmechs_compat:ground_dodo",
             SKILL_NOSURI = "dominionsword_pomkotsmechs_compat:ground_nosuri",
             SKILL_MUKUDORI = "dominionsword_pomkotsmechs_compat:ground_mukudori";
-    private static final double MELEE_SWITCH_RANGE = 10.0D, RANGED_MIN_RANGE = 10.0D,
+    private static final double MELEE_SWITCH_RANGE = 20.0D, RANGED_MIN_RANGE = 10.0D,
             RANGED_PREFERRED_RANGE = 24.0D, RANGED_MAX_RANGE = 32.0D;
     private static final double SUWA_MAX_RANGE = 64.0D;
     private static final double VECTOR_BOOST_MAX_RANGE = 32.0D;
@@ -56,7 +56,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final long AUTO_ORDNANCE_INTERVAL = 2_000L;
     private static final long WEAPON_DEBUG_INTERVAL = 10L;
     private static final long OFFHAND_RANGED_INTERVAL = 100L;
-    private static final long MELEE_PRESS_INTERVAL = 40L;
+    private static final int TAKAO_CHARGE_TICKS = 14;
+    private static final long TAKAO_CHARGE_CYCLE = 60L;
 
     private static final Set<String> MELEE_WEAPONS = Set.of(
             "tsurugi", "kagenobu", "takao", "jinba", "gassan", "mitake", "tenpou");
@@ -292,17 +293,23 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 if ("takao".equals(weapon.itemId())) chargeWeapon = weapon;
                 else meleeBits |= weapon.bit();
             }
-            // Shoulder ordnance keeps firing while the melee weapon presses; when the shoulders
-            // are cooling, the charge hammer gets its own press-release pulse.
-            scheduleAutomaticEquipment(mech, target, state, now, null);
-            if (chargeWeapon != null && now >= state.nextMeleeTick
-                    && !PULSES.containsKey(mech.getUUID())) {
-                PULSES.put(mech.getUUID(), new PendingPulse(chargeWeapon.bit(), 14));
-                state.nextMeleeTick = now + MELEE_PRESS_INTERVAL;
-                DominionSwordPomkotsCompatMod.LOGGER.info(
-                        "[DS-POMKOTS-WEAPON] melee charge fire mech={} weapon={} slot={} bit={}",
-                        mech.getUUID(), chargeWeapon.itemId(), chargeWeapon.inventorySlot(), chargeWeapon.bit());
+            // The charge hammer presses for a fixed window and releases so its native charge
+            // fires, on its own cadence that is independent of shoulder-ordnance pulses.
+            if (chargeWeapon != null) {
+                if (now < state.takaoPressEndTick || now >= state.nextTakaoPressTick) {
+                    meleeBits |= chargeWeapon.bit();
+                }
+                if (now >= state.nextTakaoPressTick) {
+                    state.takaoPressEndTick = now + TAKAO_CHARGE_TICKS;
+                    state.nextTakaoPressTick = now + TAKAO_CHARGE_CYCLE;
+                    DominionSwordPomkotsCompatMod.LOGGER.info(
+                            "[DS-POMKOTS-WEAPON] takao charge press mech={} bit={} until={}",
+                            mech.getUUID(), chargeWeapon.bit(), state.takaoPressEndTick);
+                }
             }
+            // Shoulder ordnance keeps firing while the melee weapon presses; when the shoulders
+            // are cooling, the charge hammer keeps its own cadence.
+            scheduleAutomaticEquipment(mech, target, state, now, null);
             INPUT_BITS.put(mech.getUUID(), meleeBits);
             if (now % 10L == 0L) {
                 DominionSwordPomkotsCompatMod.LOGGER.info(
@@ -1187,7 +1194,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final class CombatState {
         UUID target;
         long nextPrimaryTick;
-        long nextMeleeTick;
+        long takaoPressEndTick;
+        long nextTakaoPressTick;
         long nextTraceTick;
         long lastWeaponDebugTick;
         long lastAttackTick;

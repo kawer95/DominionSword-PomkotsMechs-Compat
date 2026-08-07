@@ -1,3 +1,8 @@
+# 1.7.24
+
+- Extends the melee engagement range to 20 blocks: a mech with a melee weapon now closes in and attacks from up to 20 blocks away.
+- Fixes the charge hammer (Takao): it presses and releases on its own 60-tick cadence through the shared input mask, so it charges and fires even while shoulder ordnance bursts are running.
+
 # 1.7.23
 
 - Includes the off-hand bit in the ranged fire input mask, so a machine gun or other second hand weapon actually fires alongside the main hand.
