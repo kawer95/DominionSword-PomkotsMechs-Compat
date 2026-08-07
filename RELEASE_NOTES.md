@@ -1,3 +1,7 @@
+# 1.8.7
+
+- Adds the stahl rising-block debris to the Takao (大锤) ground impact: ground blocks around the hammer head are flung upward with random spin, gravity and lifetime, matching the SporeFix stahl landing effect.
+
 # 1.8.6
 
 - Replaces the Kagenobu (景信) shockwave ring particle with a true PMV01-style pilebunker light effect: a spinning ring of 24 glowing blades that expands and fades at the impact point, rendered as a short-lived effect entity so all nearby players see it.

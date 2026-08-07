@@ -1,12 +1,14 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
+import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import grcmcs.minecraft.mods.pomkotsmechs.items.parts.weapons.TakaoItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -58,9 +60,55 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 double z = center.z + Math.sin(angle) * radius;
                 serverLevel.sendParticles(blockParticle, x, center.y + 0.12D, z, 3, 0.18D, 0.08D, 0.18D, 0.18D);
             }
+            dominion$spawnRisingBlocks(serverLevel, center, scale);
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }
+    }
+
+    @Unique
+    private static void dominion$spawnRisingBlocks(ServerLevel level, Vec3 center, float scale) {
+        double radius = 5.6D * scale;
+        int minX = Mth.floor(center.x - radius);
+        int maxX = Mth.ceil(center.x + radius);
+        int minZ = Mth.floor(center.z - radius);
+        int maxZ = Mth.ceil(center.z + radius);
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                double dx = x + 0.5D - center.x;
+                double dz = z + 0.5D - center.z;
+                double distance = Math.sqrt(dx * dx + dz * dz);
+                if (distance > radius || distance < 0.75D) {
+                    continue;
+                }
+                if (level.random.nextFloat() > Mth.clamp(1.15D - distance / radius, 0.18D, 0.72D)) {
+                    continue;
+                }
+
+                int y = dominion$findGroundY(level, x, z, Mth.floor(center.y));
+                mutable.set(x, y, z);
+                BlockState blockState = level.getBlockState(mutable);
+                if (!dominion$canRenderAsRisingBlock(level, mutable, blockState)) {
+                    continue;
+                }
+
+                double outward = Math.max(distance, 0.001D);
+                double bounce = Mth.clamp(0.92D - distance / radius * 0.38D + level.random.nextDouble() * 0.22D,
+                        0.38D, 0.92D);
+                Vec3 velocity = new Vec3(dx / outward * 0.12D, bounce, dz / outward * 0.12D);
+                int life = 22 + level.random.nextInt(14) + Mth.floor(distance * 2.0D);
+                RisingBlockEntity risingBlock = new RisingBlockEntity(
+                        level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, velocity);
+                level.addFreshEntity(risingBlock);
+            }
+        }
+    }
+
+    @Unique
+    private static boolean dominion$canRenderAsRisingBlock(ServerLevel level, BlockPos pos, BlockState blockState) {
+        return !blockState.isAir() && !blockState.hasBlockEntity() && !level.getBlockState(pos.above()).blocksMotion();
     }
 
     @Unique
