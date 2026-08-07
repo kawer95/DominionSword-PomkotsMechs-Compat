@@ -1,5 +1,6 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
+import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class Pmvc01SaberAnimationMixin {
     @Inject(method = "getAnimationName", at = @At("HEAD"), cancellable = true, remap = false)
     private void dominion$pilebunkerSaberAnimation(ActionWeapon act, String side, CallbackInfoReturnable<String> cir) {
+        DominionSwordPomkotsCompatMod.LOGGER.info("[DS-POMKOTS-ANIM] saber animation name replaced");
         cir.setReturnValue("animation.pmv01.pilebunker");
     }
 }

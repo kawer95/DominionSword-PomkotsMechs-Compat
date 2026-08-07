@@ -47,12 +47,25 @@ public abstract class TsurugiPilebunkerEffectsMixin {
     )
     private void dominion$spawnShockwave(ActionWeapon.WeaponMechInterface mechInterface, int tick, boolean isOnFire,
                                          CallbackInfo ci) {
-        Level world = mechInterface.getWorld();
-        if (!world.isClientSide || !isOnFire) return;
-        Vec3 point = new Vec3(2.25D, 1.0D, 8.0D)
-                .yRot((float) Math.toRadians(-mechInterface.getYRot()))
-                .add(mechInterface.position());
-        world.addParticle(PomkotsParticles.SHOCKWAVE_RING.get(), point.x, point.y, point.z, 0.0D, 0.0D, 0.0D);
-        DominionSwordPomkotsCompatMod.LOGGER.debug("[DS-POMKOTS-WEAPON] pilebunker shockwave at {}", point);
+        try {
+            Level world = mechInterface.getWorld();
+            if (!world.isClientSide || !isOnFire) return;
+            Vec3 point = new Vec3(2.25D, 1.0D, 8.0D)
+                    .yRot((float) Math.toRadians(-mechInterface.getYRot()))
+                    .add(mechInterface.position());
+            world.addParticle(PomkotsParticles.SHOCKWAVE_RING.get(), point.x, point.y, point.z, 0.0D, 0.0D, 0.0D);
+        } catch (RuntimeException ex) {
+            DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] shockwave spawn failed", ex);
+        }
+    }
+
+    @Inject(method = "startUsing", at = @At("HEAD"), cancellable = true, remap = false)
+    private void dominion$suppressWeaponSwingAnimation(ActionWeapon.WeaponMechInterface context, CallbackInfo ci) {
+        ci.cancel();
+    }
+
+    @Inject(method = "endUsing", at = @At("HEAD"), cancellable = true, remap = false)
+    private void dominion$suppressWeaponIdleAnimation(ActionWeapon.WeaponMechInterface context, CallbackInfo ci) {
+        ci.cancel();
     }
 }

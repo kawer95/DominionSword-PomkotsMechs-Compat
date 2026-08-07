@@ -1,3 +1,9 @@
+# 1.8.2
+
+- Cleans the ported pilebunker animation to only the PMVC01 skeleton bones so GeckoLib no longer processes missing weapon-part bones that froze the mech.
+- Resolves the pilebunker animation directly from the animation cache for PMVC01 instead of relying only on the fallback lookup, and adds runtime animation diagnostics.
+- Suppresses the sword item's own swing/idle animation so the body pilebunker attack fully replaces the original saber action.
+
 # 1.8.1
 
 - Fixes a startup crash from the saber animation mixin: the animation name redirect now targets the SABER motion class directly instead of the compiled lambda methods that host the animation calls.
