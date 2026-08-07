@@ -68,4 +68,19 @@ public abstract class TsurugiPilebunkerEffectsMixin {
     private void dominion$suppressWeaponIdleAnimation(ActionWeapon.WeaponMechInterface context, CallbackInfo ci) {
         ci.cancel();
     }
+
+    @Redirect(
+            method = "tickWeaponInAction(Lgrcmcs/minecraft/mods/pomkotsmechs/entity/vehicle/equipment/action/"
+                    + "custom/ActionWeapon$WeaponMechInterface;IZ)V",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lgrcmcs/minecraft/mods/pomkotsmechs/entity/vehicle/equipment/action/custom/"
+                            + "ActionWeapon$WeaponMechInterface;addVelocity(FFF)V"
+            ),
+            remap = false
+    )
+    private void dominion$suppressSaberLunge(ActionWeapon.WeaponMechInterface mechInterface,
+                                             float pitch, float yaw, float strength) {
+        // The pilebunker punches in place; suppress the native saber forward lunge.
+    }
 }

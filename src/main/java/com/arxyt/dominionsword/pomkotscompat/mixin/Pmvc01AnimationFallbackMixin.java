@@ -13,33 +13,26 @@ import software.bernie.geckolib.core.animation.Animation;
 import software.bernie.geckolib.model.GeoModel;
 
 /**
- * Supplies the ported PMV01 pilebunker animation as a fallback animation file for PMVC01,
- * so its controller can play the animation without replacing the 293 KB native file.
+ * Swaps PMVC01's saber arm animations for the ported PMV01 pilebunker animation. The native
+ * controller keeps requesting "animation.pmv01.w_saber_*" (a name that is guaranteed to resolve),
+ * and this mixin substitutes the pilebunker animation content at resolution time.
  */
 @Mixin(GeoModel.class)
 public abstract class Pmvc01AnimationFallbackMixin {
-    private static final String PILEBUNKER_ANIMATION = "animation.pmv01.pilebunker";
-
     @Inject(method = "getAnimation", at = @At("HEAD"), cancellable = true, remap = false)
-    private void dominion$resolvePilebunkerAnimation(GeoAnimatable animatable, String name,
+    private void dominion$replaceSaberWithPilebunker(GeoAnimatable animatable, String name,
                                                      CallbackInfoReturnable<Animation> cir) {
-        if (!(animatable instanceof Pmvc01Entity) || !PILEBUNKER_ANIMATION.equals(name)) return;
+        if (!(animatable instanceof Pmvc01Entity)) return;
+        if (!"animation.pmv01.w_saber_right".equals(name)
+                && !"animation.pmv01.w_saber_left".equals(name)) return;
         ResourceLocation file = new ResourceLocation(DominionSwordPomkotsCompatMod.MODID,
                 "animations/pmvc01_pilebunker.json");
         var baked = GeckoLibCache.getBakedAnimations().get(file);
-        Animation animation = baked == null ? null : baked.getAnimation(name);
+        Animation animation = baked == null ? null : baked.getAnimation("animation.pmv01.pilebunker");
         DominionSwordPomkotsCompatMod.LOGGER.info(
-                "[DS-POMKOTS-ANIM] resolve pilebunker mech={} cached={} found={}",
+                "[DS-POMKOTS-ANIM] replace saber {} mech={} cached={} found={}",
+                name,
                 ((Pmvc01Entity) animatable).getUUID(), baked != null, animation != null);
         if (animation != null) cir.setReturnValue(animation);
-    }
-
-    @Inject(method = "getAnimationResourceFallbacks", at = @At("RETURN"), cancellable = true, remap = false)
-    private void dominion$addPilebunkerAnimation(GeoAnimatable animatable, CallbackInfoReturnable<ResourceLocation[]> cir) {
-        if (animatable instanceof Pmvc01Entity) {
-            cir.setReturnValue(new ResourceLocation[]{
-                    new ResourceLocation(DominionSwordPomkotsCompatMod.MODID, "animations/pmvc01_pilebunker.json")
-            });
-        }
     }
 }

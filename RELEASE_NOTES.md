@@ -1,3 +1,8 @@
+# 1.8.3
+
+- Swaps the saber animation content at resolution time: PMVC01's controller still requests its native w_saber names (a path that is guaranteed to resolve), and the pilebunker animation is substituted instead. This fixes the body continuing to play the old saber motion.
+- Suppresses the saber's forward lunge so the ported pilebunker attack punches in place like PMV01.
+
 # 1.8.2
 
 - Cleans the ported pilebunker animation to only the PMVC01 skeleton bones so GeckoLib no longer processes missing weapon-part bones that froze the mech.
