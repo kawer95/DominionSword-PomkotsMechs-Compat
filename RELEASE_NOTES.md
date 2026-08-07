@@ -1,3 +1,7 @@
+# 1.8.1
+
+- Fixes a startup crash from the saber animation mixin: the animation name redirect now targets the SABER motion class directly instead of the compiled lambda methods that host the animation calls.
+
 # 1.8.0
 
 - Ports PMV01's pilebunker attack to PMVC01's saber: the sword swing now plays the full pilebunker animation (arms, legs, hips and spine) through a GeckoLib animation fallback file, without overriding the native animation file.
