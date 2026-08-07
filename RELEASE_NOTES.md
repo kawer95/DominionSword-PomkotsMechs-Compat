@@ -1,3 +1,7 @@
+# 1.8.6
+
+- Replaces the Kagenobu (景信) shockwave ring particle with a true PMV01-style pilebunker light effect: a spinning ring of 24 glowing blades that expands and fades at the impact point, rendered as a short-lived effect entity so all nearby players see it.
+
 # 1.8.5
 
 - Adds the stahl-style ground-break effect to the Takao (大锤) charge hammer: explosion, dust cloud, ground block debris burst and debris ring at the impact point, scaled by charge level.

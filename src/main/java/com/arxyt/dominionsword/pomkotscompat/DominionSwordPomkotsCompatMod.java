@@ -3,8 +3,8 @@ package com.arxyt.dominionsword.pomkotscompat;
 import com.arxyt.dominionsword.api.DominionVehicleAdapters;
 import com.arxyt.dominionsword.api.DominionSkills;
 import com.arxyt.dominionsword.config.ServerConfig;
-import com.arxyt.dominionsword.pomkotscompat.particle.PomkotsParticles;
-import com.arxyt.dominionsword.pomkotscompat.particle.PomkotsParticlesClient;
+import com.arxyt.dominionsword.pomkotscompat.client.PomkotsEntitiesClient;
+import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
@@ -26,9 +26,9 @@ public final class DominionSwordPomkotsCompatMod {
 
     public DominionSwordPomkotsCompatMod() {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
-        PomkotsParticles.PARTICLES.register(modBus);
+        PomkotsEntities.ENTITY_TYPES.register(modBus);
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            modBus.addListener(PomkotsParticlesClient::registerParticleFactories);
+            modBus.addListener(PomkotsEntitiesClient::registerRenderers);
         }
         DominionVehicleAdapters.register(adapter);
         DominionSkills.register(adapter);
