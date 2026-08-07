@@ -43,6 +43,11 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
         return dominion$lastAppliedDriverInput;
     }
 
+    @Override
+    public short dominion$getQueuedDriverInput() {
+        return dominion$queuedDriverInput;
+    }
+
     /**
      * PMVC runs its built-in Mob auto controller before calling super.tick(), which can replace
      * the input submitted by Dominion Sword at the end of the preceding server tick. Apply our

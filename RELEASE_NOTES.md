@@ -1,3 +1,10 @@
+# 1.7.21
+
+- Fires main-hand and off-hand weapons together: the main hand holds fire while the off hand runs short bursts with a cooldown, so a gatling and machine gun no longer starve each other.
+- Starts a hand-weapon reload automatically when the chamber is empty and magazines are loaded, fixing off-hand machine guns stuck at 0 rounds.
+- Gives melee weapons priority in melee range and presses them on a cooldown cadence, so an off-hand sword can actually swing instead of being starved by shoulder ordnance.
+- Preserves movement input while shoulder bursts are running.
+
 # 1.7.20
 
 - Adds throttled weapon diagnostics to the server log for PMVC01 piloting: combat branch decisions, submitted driver-input bits, shoulder-equipment skip reasons and native weapon action/ammo state per slot.
