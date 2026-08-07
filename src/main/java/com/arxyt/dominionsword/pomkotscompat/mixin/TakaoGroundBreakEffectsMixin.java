@@ -1,11 +1,11 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 /**
- * Ground-rupture block spawning logic derived from EEEAB's Mobs (EEEABsMobs) by EEEAB,
+ * Ground-crack block spawning logic derived from EEEAB's Mobs (EEEABsMobs) by EEEAB,
  * licensed under LGPL-3.0 (https://github.com/EEEAB/EEEABsMobs). Modified for this addon.
  */
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
-import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackEffectEntity;
+import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
@@ -26,8 +26,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Adds the stahl-style ground-break effect to the Takao (大锤) charge hammer impact: explosion,
- * dust cloud, ground block debris burst and a debris ring at the hammer head.
+ * Adds two independent ground effects to the Takao (大锤) charge hammer impact:
+ * the block splash (flying debris) and the realm-warden ground crack (blocks tilt, jump and
+ * settle back while the original ground recovers).
  */
 @Mixin(TakaoItem.class)
 public abstract class TakaoGroundBreakEffectsMixin {
@@ -67,19 +68,59 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 double z = center.z + Math.sin(angle) * radius;
                 serverLevel.sendParticles(blockParticle, x, center.y + 0.12D, z, 3, 0.18D, 0.08D, 0.18D, 0.18D);
             }
-            dominion$spawnRupturedBlocks(serverLevel, center, scale);
-            GroundCrackEffectEntity crack = new GroundCrackEffectEntity(
-                    PomkotsEntities.GROUND_CRACK.get(), serverLevel);
-            crack.moveTo(center.x, center.y, center.z, 0.0F, 0.0F);
-            crack.setEffectScale(scale);
-            serverLevel.addFreshEntity(crack);
+
+            // Two separate effects: flying debris splash + ground crack that recovers.
+            dominion$spawnSplashBlocks(serverLevel, center, scale);
+            dominion$spawnCrackBlocks(serverLevel, center, scale);
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }
     }
 
+    /** Flying debris blocks flung outward and upward (the block splash). */
     @Unique
-    private static void dominion$spawnRupturedBlocks(ServerLevel level, Vec3 center, float scale) {
+    private static void dominion$spawnSplashBlocks(ServerLevel level, Vec3 center, float scale) {
+        double radius = 5.6D * scale;
+        int minX = Mth.floor(center.x - radius);
+        int maxX = Mth.ceil(center.x + radius);
+        int minZ = Mth.floor(center.z - radius);
+        int maxZ = Mth.ceil(center.z + radius);
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                double dx = x + 0.5D - center.x;
+                double dz = z + 0.5D - center.z;
+                double distance = Math.sqrt(dx * dx + dz * dz);
+                if (distance > radius || distance < 0.75D) {
+                    continue;
+                }
+                if (level.random.nextFloat() > Mth.clamp(1.15D - distance / radius, 0.18D, 0.72D)) {
+                    continue;
+                }
+
+                int y = dominion$findGroundY(level, x, z, Mth.floor(center.y));
+                mutable.set(x, y, z);
+                BlockState blockState = level.getBlockState(mutable);
+                if (!dominion$canRenderAsRisingBlock(level, mutable, blockState)) {
+                    continue;
+                }
+
+                double outward = Math.max(distance, 0.001D);
+                double bounce = Mth.clamp(0.92D - distance / radius * 0.38D
+                        + level.random.nextDouble() * 0.22D, 0.38D, 0.92D);
+                Vec3 velocity = new Vec3(dx / outward * 0.12D, bounce, dz / outward * 0.12D);
+                int life = 22 + level.random.nextInt(14) + Mth.floor(distance * 2.0D);
+                RisingBlockEntity risingBlock = new RisingBlockEntity(
+                        level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, velocity);
+                level.addFreshEntity(risingBlock);
+            }
+        }
+    }
+
+    /** Blocks that tilt randomly, jump and settle back while the ground recovers (the crack). */
+    @Unique
+    private static void dominion$spawnCrackBlocks(ServerLevel level, Vec3 center, float scale) {
         double radius = 2.2D * scale;
         int minX = Mth.floor(center.x - radius);
         int maxX = Mth.ceil(center.x + radius);
@@ -119,9 +160,9 @@ public abstract class TakaoGroundBreakEffectsMixin {
                         (float) Math.toRadians(level.random.nextFloat() * 12.0F - 6.0F)));
                 float bounce = 0.6F + (float) (distance * bounceExponent);
                 int life = 20 + level.random.nextInt(Math.max(1, (int) (radius * 20.0D)));
-                RisingBlockEntity risingBlock = new RisingBlockEntity(
+                GroundCrackBlockEntity crackBlock = new GroundCrackBlockEntity(
                         level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, rotation, bounce);
-                level.addFreshEntity(risingBlock);
+                level.addFreshEntity(crackBlock);
             }
         }
     }

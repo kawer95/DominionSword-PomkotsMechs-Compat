@@ -1,3 +1,7 @@
+# 1.8.14
+
+- Splits the hammer ground effect into two independent visuals: the block splash (debris blocks flying outward) and the realm-warden ground crack (blocks tilting and jumping in place, with the ground recovering). Removes the flat ring texture entity.
+
 # 1.8.13
 
 - Relicenses the addon under LGPL-3.0 because it contains code ported from EEEABsMobs (LGPL-3.0). Adds a NOTICE with attribution and modification statements, and marks the ported source files.
