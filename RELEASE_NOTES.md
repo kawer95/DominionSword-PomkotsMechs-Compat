@@ -1,3 +1,7 @@
+# 1.8.22
+
+- Keeps all existing Takao ground-slam particles (explosion, cloud, block debris burst and ring) and adds a large splashing spark burst at the impact point using Pomkots Mechs' native SPARK particles, scaled by charge level.
+
 # 1.8.21
 
 - Shrinks the Takao hammer block splash by one ring (radius 5.6 -> 4.6) so the debris lands closer to the impact point.

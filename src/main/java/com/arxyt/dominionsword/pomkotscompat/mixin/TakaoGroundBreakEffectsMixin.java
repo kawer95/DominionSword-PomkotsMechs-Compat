@@ -8,11 +8,13 @@ import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
+import grcmcs.minecraft.mods.pomkotsmechs.PomkotsMechs;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import grcmcs.minecraft.mods.pomkotsmechs.items.parts.weapons.TakaoItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
@@ -25,6 +27,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.lang.reflect.Field;
+
 /**
  * Adds two independent ground effects to the Takao (大锤) charge hammer impact:
  * the block splash (flying debris) and the realm-warden ground crack (blocks tilt, jump and
@@ -32,6 +36,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(TakaoItem.class)
 public abstract class TakaoGroundBreakEffectsMixin {
+    @Unique
+    private static SimpleParticleType dominion$sparkYellow;
+    @Unique
+    private static SimpleParticleType dominion$sparkOrange;
+
     @Inject(
             method = "tickWeaponInAction(Lgrcmcs/minecraft/mods/pomkotsmechs/entity/vehicle/equipment/action/"
                     + "custom/ActionWeapon$WeaponMechInterface;IZ)V",
@@ -68,6 +77,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 double z = center.z + Math.sin(angle) * radius;
                 serverLevel.sendParticles(blockParticle, x, center.y + 0.12D, z, 3, 0.18D, 0.08D, 0.18D, 0.18D);
             }
+            dominion$spawnImpactSparks(serverLevel, center, scale);
 
             // Two separate effects: flying debris splash + ground crack that recovers.
             dominion$spawnSplashBlocks(serverLevel, center, scale);
@@ -75,6 +85,51 @@ public abstract class TakaoGroundBreakEffectsMixin {
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }
+    }
+
+    /** Large splashing spark burst at the impact point, using Pomkots Mechs' native SPARK particles. */
+    @Unique
+    private static void dominion$spawnImpactSparks(ServerLevel level, Vec3 center, float scale) {
+        int count = (int) (60.0F * scale);
+        for (int i = 0; i < count; i++) {
+            double angle = level.random.nextDouble() * Math.PI * 2.0D;
+            double speed = 0.4D + level.random.nextDouble() * 1.1D;
+            double vx = Math.cos(angle) * speed;
+            double vz = Math.sin(angle) * speed;
+            double vy = 0.35D + level.random.nextDouble() * 0.85D;
+            double px = center.x + (level.random.nextDouble() - 0.5D) * 0.5D;
+            double py = center.y + (level.random.nextDouble() - 0.5D) * 0.5D;
+            double pz = center.z + (level.random.nextDouble() - 0.5D) * 0.5D;
+            SimpleParticleType type = level.random.nextInt(4) == 0
+                    ? dominion$getSpark(true) : dominion$getSpark(false);
+            level.addAlwaysVisibleParticle(type, true, px, py, pz, vx, vy, vz);
+        }
+    }
+
+    /** Reads a Pomkots SPARK particle type via reflection to avoid a compile-time Architectury dependency. */
+    @Unique
+    private static SimpleParticleType dominion$getSpark(boolean orange) {
+        SimpleParticleType cached = orange ? dominion$sparkOrange : dominion$sparkYellow;
+        if (cached != null) {
+            return cached;
+        }
+        SimpleParticleType resolved = ParticleTypes.CRIT;
+        try {
+            Field field = PomkotsMechs.class.getField(orange ? "SPARK_ORANGE" : "SPARK");
+            Object value = field.get(null);
+            if (value instanceof SimpleParticleType type) {
+                resolved = type;
+            }
+        } catch (ReflectiveOperationException ex) {
+            DominionSwordPomkotsCompatMod.LOGGER.warn(
+                    "[DS-POMKOTS-WEAPON] Pomkots spark particle unavailable, falling back to crit", ex);
+        }
+        if (orange) {
+            dominion$sparkOrange = resolved;
+        } else {
+            dominion$sparkYellow = resolved;
+        }
+        return resolved;
     }
 
     /** Flying debris blocks flung outward and upward (the block splash). */
