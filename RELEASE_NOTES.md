@@ -1,3 +1,7 @@
+# 1.8.8
+
+- Renders the Kagenobu (景信) pilebunker blade-ring through the standard entity render buffer instead of immediate mode, so the spinning light blades are actually visible.
+
 # 1.8.7
 
 - Adds the stahl rising-block debris to the Takao (大锤) ground impact: ground blocks around the hammer head are flung upward with random spin, gravity and lifetime, matching the SporeFix stahl landing effect.

@@ -2,19 +2,15 @@ package com.arxyt.dominionsword.pomkotscompat.client.renderer;
 
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import com.arxyt.dominionsword.pomkotscompat.entity.PilebunkerEffectEntity;
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
+import org.joml.Matrix4f;
 
 /**
  * Renders a PMV01 pilebunker-style ring of spinning light blades at the impact point: 24 thin
@@ -43,36 +39,25 @@ public class PilebunkerEffectRenderer extends EntityRenderer<PilebunkerEffectEnt
         float alpha = Math.min(1.0F, envelope * 1.5F);
 
         poseStack.pushPose();
-        poseStack.translate(0.0D, entity.getBbHeight() / 2.0D, 0.0D);
+        poseStack.translate(0.0D, 1.5D, 0.0D);
         poseStack.mulPose(Axis.YP.rotationDegrees(rotation));
-
-        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-        RenderSystem.enableBlend();
-        RenderSystem.blendFuncSeparate(
-                GlStateManager.SourceFactor.SRC_ALPHA,
-                GlStateManager.DestFactor.ONE,
-                GlStateManager.SourceFactor.ONE,
-                GlStateManager.DestFactor.ZERO);
-        RenderSystem.setShaderTexture(0, TEXTURE);
-
-        Tesselator tesselator = Tesselator.getInstance();
-        BufferBuilder buffer = tesselator.getBuilder();
-        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        VertexConsumer consumer = bufferSource.getBuffer(RenderType.entityTranslucent(TEXTURE));
+        Matrix4f pose = poseStack.last().pose();
         for (int i = 0; i < BLADE_COUNT; i++) {
             double angle = (Math.PI * 2.0D * i) / BLADE_COUNT;
             double cx = Math.cos(angle) * radius;
             double cz = Math.sin(angle) * radius;
             double tx = -Math.sin(angle) * width / 2.0D;
             double tz = Math.cos(angle) * width / 2.0D;
-            buffer.vertex(cx + tx, 0.0D, cz + tz).uv(0.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
-            buffer.vertex(cx - tx, 0.0D, cz - tz).uv(1.0F, 1.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
-            buffer.vertex(cx - tx, height, cz - tz).uv(1.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
-            buffer.vertex(cx + tx, height, cz + tz).uv(0.0F, 0.0F).color(1.0F, 1.0F, 1.0F, alpha).endVertex();
+            consumer.vertex(pose, (float) (cx + tx), 0.0F, (float) (cz + tz))
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 1.0F).endVertex();
+            consumer.vertex(pose, (float) (cx - tx), 0.0F, (float) (cz - tz))
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 1.0F).endVertex();
+            consumer.vertex(pose, (float) (cx - tx), height, (float) (cz - tz))
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 0.0F).endVertex();
+            consumer.vertex(pose, (float) (cx + tx), height, (float) (cz + tz))
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 0.0F).endVertex();
         }
-        tesselator.end();
-
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableBlend();
         poseStack.popPose();
     }
 

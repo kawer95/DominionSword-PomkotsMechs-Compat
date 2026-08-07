@@ -36,6 +36,8 @@ public abstract class KagenobuPilebunkerEffectsMixin {
                     PomkotsEntities.PILEBUNKER_EFFECT.get(), serverLevel);
             effect.moveTo(point.x, point.y, point.z, mechInterface.getYRot(), 0.0F);
             serverLevel.addFreshEntity(effect);
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-WEAPON] kagenobu blade effect spawned at {}", point);
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] pilebunker effect spawn failed", ex);
         }
