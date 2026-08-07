@@ -1,3 +1,7 @@
+# 1.8.12
+
+- Removes the Kagenobu (景信) blade-ring effect entity and renderer entirely.
+
 # 1.8.11
 
 - Replaces the hammer's flying-debris blocks with the realm-warden ground rupture: ground blocks around the impact tilt randomly, jump up and settle back, then the visuals fade so the ground recovers flat. Ports the exact SIMULATE_RUPTURE entity behavior and renderer from EEEABsMobs.
