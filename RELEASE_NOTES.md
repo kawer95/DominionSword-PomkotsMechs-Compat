@@ -1,3 +1,8 @@
+# 1.8.0
+
+- Ports PMV01's pilebunker attack to PMVC01's saber: the sword swing now plays the full pilebunker animation (arms, legs, hips and spine) through a GeckoLib animation fallback file, without overriding the native animation file.
+- Replaces the saber swing sound with the pilebunker impact sound and spawns an expanding shockwave ring at the impact point, matching PMV01's shockwave visual.
+
 # 1.7.24
 
 - Extends the melee engagement range to 20 blocks: a mech with a melee weapon now closes in and attacks from up to 20 blocks away.

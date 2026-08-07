@@ -3,13 +3,19 @@ package com.arxyt.dominionsword.pomkotscompat;
 import com.arxyt.dominionsword.api.DominionVehicleAdapters;
 import com.arxyt.dominionsword.api.DominionSkills;
 import com.arxyt.dominionsword.config.ServerConfig;
+import com.arxyt.dominionsword.pomkotscompat.particle.PomkotsParticles;
+import com.arxyt.dominionsword.pomkotscompat.particle.PomkotsParticlesClient;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.level.ExplosionEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import org.slf4j.Logger;
 
 @Mod(DominionSwordPomkotsCompatMod.MODID)
@@ -19,6 +25,11 @@ public final class DominionSwordPomkotsCompatMod {
     private final PomkotsMechVehicleAdapter adapter = new PomkotsMechVehicleAdapter();
 
     public DominionSwordPomkotsCompatMod() {
+        IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
+        PomkotsParticles.PARTICLES.register(modBus);
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            modBus.addListener(PomkotsParticlesClient::registerParticleFactories);
+        }
         DominionVehicleAdapters.register(adapter);
         DominionSkills.register(adapter);
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
