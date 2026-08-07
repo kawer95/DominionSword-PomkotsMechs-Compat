@@ -1,3 +1,8 @@
+# 1.8.9
+
+- Fixes the Kagenobu (景信) blade-ring being invisible: the effect quads now carry a full-bright lightmap so they actually render.
+- Adds the realm-warden style ground-crack ring to the Takao (大锤) impact: a flat radial crack ring expands across the ground beneath the hammer, scaled by charge level.
+
 # 1.8.8
 
 - Renders the Kagenobu (景信) pilebunker blade-ring through the standard entity render buffer instead of immediate mode, so the spinning light blades are actually visible.

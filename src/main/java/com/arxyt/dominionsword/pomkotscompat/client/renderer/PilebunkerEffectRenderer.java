@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
@@ -50,13 +51,17 @@ public class PilebunkerEffectRenderer extends EntityRenderer<PilebunkerEffectEnt
             double tx = -Math.sin(angle) * width / 2.0D;
             double tz = Math.cos(angle) * width / 2.0D;
             consumer.vertex(pose, (float) (cx + tx), 0.0F, (float) (cz + tz))
-                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 1.0F).endVertex();
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 1.0F)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(0xF000F0).endVertex();
             consumer.vertex(pose, (float) (cx - tx), 0.0F, (float) (cz - tz))
-                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 1.0F).endVertex();
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 1.0F)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(0xF000F0).endVertex();
             consumer.vertex(pose, (float) (cx - tx), height, (float) (cz - tz))
-                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 0.0F).endVertex();
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(1.0F, 0.0F)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(0xF000F0).endVertex();
             consumer.vertex(pose, (float) (cx + tx), height, (float) (cz + tz))
-                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 0.0F).endVertex();
+                    .color(1.0F, 1.0F, 1.0F, alpha).uv(0.0F, 0.0F)
+                    .overlayCoords(OverlayTexture.NO_OVERLAY).uv2(0xF000F0).endVertex();
         }
         poseStack.popPose();
     }

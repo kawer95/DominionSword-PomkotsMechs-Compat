@@ -1,7 +1,9 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
+import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackEffectEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
+import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import grcmcs.minecraft.mods.pomkotsmechs.items.parts.weapons.TakaoItem;
 import net.minecraft.core.BlockPos;
@@ -61,6 +63,11 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 serverLevel.sendParticles(blockParticle, x, center.y + 0.12D, z, 3, 0.18D, 0.08D, 0.18D, 0.18D);
             }
             dominion$spawnRisingBlocks(serverLevel, center, scale);
+            GroundCrackEffectEntity crack = new GroundCrackEffectEntity(
+                    PomkotsEntities.GROUND_CRACK.get(), serverLevel);
+            crack.moveTo(center.x, center.y, center.z, 0.0F, 0.0F);
+            crack.setEffectScale(scale);
+            serverLevel.addFreshEntity(crack);
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }

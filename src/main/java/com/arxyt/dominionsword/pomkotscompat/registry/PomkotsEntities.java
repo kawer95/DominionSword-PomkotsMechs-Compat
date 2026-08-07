@@ -1,6 +1,7 @@
 package com.arxyt.dominionsword.pomkotscompat.registry;
 
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
+import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackEffectEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.PilebunkerEffectEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import net.minecraft.world.entity.EntityType;
@@ -25,6 +26,12 @@ public final class PomkotsEntities {
                     () -> EntityType.Builder.<RisingBlockEntity>of(RisingBlockEntity::new, MobCategory.MISC)
                             .sized(1.0F, 1.0F)
                             .build("rising_block"));
+
+    public static final RegistryObject<EntityType<GroundCrackEffectEntity>> GROUND_CRACK =
+            ENTITY_TYPES.register("ground_crack",
+                    () -> EntityType.Builder.<GroundCrackEffectEntity>of(GroundCrackEffectEntity::new, MobCategory.MISC)
+                            .sized(0.1F, 0.1F)
+                            .build("ground_crack"));
 
     private PomkotsEntities() {
     }
