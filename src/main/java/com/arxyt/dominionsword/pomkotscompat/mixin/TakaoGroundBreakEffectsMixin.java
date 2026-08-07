@@ -121,7 +121,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
     /** Blocks that tilt randomly, jump and settle back while the ground recovers (the crack). */
     @Unique
     private static void dominion$spawnCrackBlocks(ServerLevel level, Vec3 center, float scale) {
-        double radius = 2.2D * scale;
+        double radius = 3.2D * scale;
         int minX = Mth.floor(center.x - radius);
         int maxX = Mth.ceil(center.x + radius);
         int minZ = Mth.floor(center.z - radius);

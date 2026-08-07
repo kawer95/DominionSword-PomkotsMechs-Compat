@@ -5,6 +5,5 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "dominionsword_pomkotsmechs_compat.refmap.json",
   "mixins": ["PomkotsVehicleBaseMixin", "Pmvc01EntityMixin", "Pmvc01WeaponDebugMixin", "TakaoGroundBreakEffectsMixin", "PomkotsBulletEntityMixin", "PomkotsMissileBaseEntityMixin", "PomkotsBlockDestructionMixin", "PomkotsGroundTargetMissileMixin", "PomkotsDirectFireProjectileMixin", "PomkotsProjectileCollisionMixin", "PomkotsExplosionRadiusMixin"],
-  "client": ["GroundCrackBlockHiderMixin"],
   "injectors": { "defaultRequire": 1 }
 }

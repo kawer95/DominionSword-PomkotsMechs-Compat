@@ -4,9 +4,8 @@ package com.arxyt.dominionsword.pomkotscompat.entity;
  * Ground-crack block visual derived from EEEABsMobs' EntityFallingBlock SIMULATE_RUPTURE mode
  * (https://github.com/EEEAB/EEEABsMobs), LGPL-3.0, by EEEAB.
  *
- * The world is never modified: the original block is hidden on the client only
- * (see GroundCrackBlockHider) and the entity renders a tilted copy that cracks open,
- * holds, then straightens back (摆正) into the ground before disappearing.
+ * The world is never modified: the entity renders a tilted copy over the untouched ground
+ * that cracks open, holds, then straightens back (摆正) into the ground before disappearing.
  */
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import net.minecraft.core.registries.Registries;

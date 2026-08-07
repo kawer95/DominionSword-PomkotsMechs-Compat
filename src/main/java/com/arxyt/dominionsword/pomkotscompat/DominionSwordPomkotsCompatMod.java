@@ -4,7 +4,6 @@ import com.arxyt.dominionsword.api.DominionVehicleAdapters;
 import com.arxyt.dominionsword.api.DominionSkills;
 import com.arxyt.dominionsword.config.ServerConfig;
 import com.arxyt.dominionsword.pomkotscompat.client.PomkotsEntitiesClient;
-import com.arxyt.dominionsword.pomkotscompat.client.GroundCrackBlockHideEvents;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -30,9 +29,6 @@ public final class DominionSwordPomkotsCompatMod {
         PomkotsEntities.ENTITY_TYPES.register(modBus);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modBus.addListener(PomkotsEntitiesClient::registerRenderers);
-            MinecraftForge.EVENT_BUS.addListener(GroundCrackBlockHideEvents::onEntityJoin);
-            MinecraftForge.EVENT_BUS.addListener(GroundCrackBlockHideEvents::onEntityLeave);
-            MinecraftForge.EVENT_BUS.addListener(GroundCrackBlockHideEvents::onLevelUnload);
         }
         DominionVehicleAdapters.register(adapter);
         DominionSkills.register(adapter);

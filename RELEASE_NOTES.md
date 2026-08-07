@@ -1,3 +1,8 @@
+# 1.8.20
+
+- Expands the Takao hammer ground crack by one block ring around the impact point.
+- Removes the client-side original-block hiding again: the crack blocks now render over the untouched ground like EEEABsMobs does, until a better reference implementation is available. The crack blocks still straighten back (摆正) and the ground recovers when the effect ends.
+
 # 1.8.19
 
 - Fixes the Takao hammer ground crack to match the realm-warden look exactly: while the crack is active the original ground blocks are hidden on the client only (collision untouched), so the tilted crack blocks no longer overlap the originals.
