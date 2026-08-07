@@ -27,7 +27,7 @@ public class RisingBlockEntity extends Entity {
     private static final String TAG_SPIN_Y = "SpinY";
     private static final String TAG_SPIN_Z = "SpinZ";
     private static final int DEFAULT_LIFE = 26;
-    private static final double GRAVITY = 0.075D;
+    private static final double GRAVITY = 0.13D;
     private static final double DRAG = 0.96D;
 
     public float spinX;

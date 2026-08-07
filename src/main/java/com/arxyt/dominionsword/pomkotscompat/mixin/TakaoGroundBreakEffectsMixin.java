@@ -80,7 +80,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
     /** Flying debris blocks flung outward and upward (the block splash). */
     @Unique
     private static void dominion$spawnSplashBlocks(ServerLevel level, Vec3 center, float scale) {
-        double radius = 5.6D * scale;
+        double radius = 4.6D * scale;
         int minX = Mth.floor(center.x - radius);
         int maxX = Mth.ceil(center.x + radius);
         int minZ = Mth.floor(center.z - radius);
@@ -107,8 +107,8 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 }
 
                 double outward = Math.max(distance, 0.001D);
-                double bounce = Mth.clamp(0.92D - distance / radius * 0.38D
-                        + level.random.nextDouble() * 0.22D, 0.38D, 0.92D);
+                double bounce = Mth.clamp(1.05D - distance / radius * 0.45D
+                        + level.random.nextDouble() * 0.28D, 0.55D, 1.2D);
                 Vec3 velocity = new Vec3(dx / outward * 0.12D, bounce, dz / outward * 0.12D);
                 int life = 22 + level.random.nextInt(14) + Mth.floor(distance * 2.0D);
                 RisingBlockEntity risingBlock = new RisingBlockEntity(

@@ -1,3 +1,8 @@
+# 1.8.21
+
+- Shrinks the Takao hammer block splash by one ring (radius 5.6 -> 4.6) so the debris lands closer to the impact point.
+- Makes the splash debris rise faster (higher initial upward velocity) and fall faster (stronger gravity), giving a snappier burst.
+
 # 1.8.20
 
 - Expands the Takao hammer ground crack by one block ring around the impact point.
