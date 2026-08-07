@@ -1,3 +1,7 @@
+# 1.7.23
+
+- Includes the off-hand bit in the ranged fire input mask, so a machine gun or other second hand weapon actually fires alongside the main hand.
+
 # 1.7.22
 
 - Introduces a priority weapon state machine for PMVC01 piloting.

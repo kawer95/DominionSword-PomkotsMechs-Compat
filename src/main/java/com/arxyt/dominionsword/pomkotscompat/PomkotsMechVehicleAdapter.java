@@ -347,15 +347,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
 
         WeaponSlot main = ranged.get(0);
-        short handBits = (short)(main.bit() | LOCK);
-        if (ranged.size() > 1) {
-            WeaponSlot offhand = ranged.get(1);
-            if (mech instanceof Pmvc01Entity custom) {
-                ensureHandReload(custom, offhand.inventorySlot());
-                ensureHandReload(custom, main.inventorySlot());
-            }
-        } else if (mech instanceof Pmvc01Entity custom) {
-            ensureHandReload(custom, main.inventorySlot());
+        short handBits = LOCK;
+        for (WeaponSlot w : ranged) {
+            handBits |= w.bit();
+            if (mech instanceof Pmvc01Entity custom) ensureHandReload(custom, w.inventorySlot());
         }
         // Hand grenade launchers and multi-lock weapons keep their cooldown: they press for one
         // tick and release instead of being held, so they cannot fire every frame.
