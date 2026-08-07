@@ -1,3 +1,7 @@
+# 1.8.15
+
+- Reworks the realm-warden ground crack to match the source exactly: the cracked block hides the original ground block while it tilts in place (small wobble, not flying), holds briefly, then the original block is restored so the ground recovers.
+
 # 1.8.14
 
 - Splits the hammer ground effect into two independent visuals: the block splash (debris blocks flying outward) and the realm-warden ground crack (blocks tilting and jumping in place, with the ground recovering). Removes the flat ring texture entity.

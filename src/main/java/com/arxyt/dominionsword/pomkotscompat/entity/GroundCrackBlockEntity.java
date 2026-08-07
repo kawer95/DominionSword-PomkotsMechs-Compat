@@ -5,6 +5,7 @@ package com.arxyt.dominionsword.pomkotscompat.entity;
  * (https://github.com/EEEAB/EEEABsMobs). Modified for this addon.
  */
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
@@ -22,9 +23,9 @@ import net.minecraftforge.network.NetworkHooks;
 import org.joml.Quaternionf;
 
 /**
- * A ground block that visually cracks open like the realm-warden ground pound: it tilts with a
- * random rotation, jumps up, falls back and disappears, while the original block stays so the
- * ground recovers flat.
+ * A ground block that cracks open like the realm-warden ground pound: on the server the original
+ * block is hidden (replaced with air), the entity renders a tilted copy that wobbles in place,
+ * then the original block is restored so the ground recovers flat.
  */
 public class GroundCrackBlockEntity extends Entity {
     private static final EntityDataAccessor<BlockState> BLOCK_STATE =
@@ -37,33 +38,40 @@ public class GroundCrackBlockEntity extends Entity {
             SynchedEntityData.defineId(GroundCrackBlockEntity.class, EntityDataSerializers.INT);
     private static final int MAX_ACTIVE = 600;
     private static final String TAG_BLOCK_STATE = "BlockState";
-    private static final String TAG_DURATION = "Duration";
     private static final String TAG_ANIM_VY = "AnimVY";
+    private static final String TAG_ORIGIN_X = "OriginX";
+    private static final String TAG_ORIGIN_Y = "OriginY";
+    private static final String TAG_ORIGIN_Z = "OriginZ";
 
     public float animY;
     public float prevAnimY;
 
+    private BlockPos originPos;
+    private BlockState originState;
+    private boolean originHidden;
+
     public GroundCrackBlockEntity(EntityType<? extends GroundCrackBlockEntity> type, Level level) {
         super(type, level);
         this.noPhysics = true;
-        this.setDuration(20);
     }
 
     public GroundCrackBlockEntity(Level level, double x, double y, double z, BlockState blockState,
-                                  int duration, Quaternionf rotation, float vy) {
+                                  Quaternionf rotation, int duration, float vy) {
         this(PomkotsEntities.GROUND_CRACK_BLOCK.get(), level);
         this.setPos(x, y, z);
         this.setBlockState(blockState);
-        this.setDuration(duration);
         this.setRotation(rotation);
+        this.setDuration(duration);
         this.setAnimVY(vy);
+        this.originPos = BlockPos.containing(x, y, z);
+        this.originState = blockState;
     }
 
     @Override
     protected void defineSynchedData() {
         this.entityData.define(BLOCK_STATE, Blocks.DIRT.defaultBlockState());
         this.entityData.define(ROTATION, new Quaternionf());
-        this.entityData.define(ANIM_V_Y, 0.6F);
+        this.entityData.define(ANIM_V_Y, 0.1F);
         this.entityData.define(DURATION, 20);
     }
 
@@ -103,33 +111,63 @@ public class GroundCrackBlockEntity extends Entity {
     public void tick() {
         super.tick();
         if (this.tickCount >= MAX_ACTIVE) {
+            this.restoreOriginal();
             this.discard();
+            return;
+        }
+
+        if (!this.level().isClientSide && !this.originHidden
+                && this.originPos != null
+                && this.level().getBlockState(this.originPos).equals(this.originState)) {
+            this.level().setBlock(this.originPos, Blocks.AIR.defaultBlockState(), 3);
+            this.originHidden = true;
+        }
+
+        float vy = this.getAnimVY();
+        if (vy < 0.0F && this.tickCount <= this.getDuration()) {
+            this.prevAnimY = this.animY;
             return;
         }
         this.prevAnimY = this.animY;
-        this.animY += this.getAnimVY();
+        this.animY += vy;
         if (this.animY < -0.5F) {
+            this.restoreOriginal();
             this.discard();
             return;
         }
-        this.setAnimVY(this.getAnimVY() - 0.2F);
+        this.setAnimVY(vy - 0.2F);
+    }
+
+    private void restoreOriginal() {
+        if (this.level().isClientSide || !this.originHidden || this.originPos == null || this.originState == null) {
+            return;
+        }
+        if (this.level().getBlockState(this.originPos).isAir()) {
+            this.level().setBlock(this.originPos, this.originState, 3);
+        }
+        this.originHidden = false;
     }
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         this.setBlockState(NbtUtils.readBlockState(
                 this.level().holderLookup(Registries.BLOCK), tag.getCompound(TAG_BLOCK_STATE)));
-        this.setDuration(tag.getInt(TAG_DURATION));
         this.setAnimVY(tag.getFloat(TAG_ANIM_VY));
-        this.setRotation(new Quaternionf(
-                tag.getFloat("QX"), tag.getFloat("QY"), tag.getFloat("QZ"), tag.getFloat("QW")));
+        this.setDuration(tag.getInt("Duration"));
+        this.originPos = new BlockPos(tag.getInt(TAG_ORIGIN_X), tag.getInt(TAG_ORIGIN_Y), tag.getInt(TAG_ORIGIN_Z));
+        this.originState = this.getBlockState();
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         tag.put(TAG_BLOCK_STATE, NbtUtils.writeBlockState(this.getBlockState()));
-        tag.putInt(TAG_DURATION, this.getDuration());
         tag.putFloat(TAG_ANIM_VY, this.getAnimVY());
+        tag.putInt("Duration", this.getDuration());
+        if (this.originPos != null) {
+            tag.putInt(TAG_ORIGIN_X, this.originPos.getX());
+            tag.putInt(TAG_ORIGIN_Y, this.originPos.getY());
+            tag.putInt(TAG_ORIGIN_Z, this.originPos.getZ());
+        }
         Quaternionf rotation = this.getRotation();
         tag.putFloat("QX", rotation.x);
         tag.putFloat("QY", rotation.y);
