@@ -1,5 +1,9 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
+/**
+ * Ground-rupture block spawning logic derived from EEEAB's Mobs (EEEABsMobs) by EEEAB,
+ * licensed under LGPL-3.0 (https://github.com/EEEAB/EEEABsMobs). Modified for this addon.
+ */
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackEffectEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;

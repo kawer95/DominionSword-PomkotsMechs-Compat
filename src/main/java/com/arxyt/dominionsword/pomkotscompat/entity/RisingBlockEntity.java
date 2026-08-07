@@ -1,5 +1,9 @@
 package com.arxyt.dominionsword.pomkotscompat.entity;
 
+/**
+ * Derived from EEEAB's Mobs (EEEABsMobs) by EEEAB, licensed under LGPL-3.0
+ * (https://github.com/EEEAB/EEEABsMobs). Modified for this addon.
+ */
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;

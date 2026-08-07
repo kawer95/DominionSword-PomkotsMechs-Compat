@@ -1,5 +1,9 @@
 package com.arxyt.dominionsword.pomkotscompat.client.renderer;
 
+/**
+ * Derived from EEEAB's Mobs (EEEABsMobs) by EEEAB, licensed under LGPL-3.0
+ * (https://github.com/EEEAB/EEEABsMobs). Modified for this addon.
+ */
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;

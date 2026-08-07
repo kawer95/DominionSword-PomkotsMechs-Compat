@@ -1,0 +1,19 @@
+Dominion Sword: Pomkots Mechs Compatibility
+Copyright (C) 2026 kawer95 (Arxyt contributors)
+
+This addon is licensed under the GNU Lesser General Public License, version 3 (LGPL-3.0).
+See the LICENSE file for the full license text.
+
+It contains code derived from EEEAB's Mobs (EEEABsMobs) by EEEAB
+(https://github.com/EEEAB/EEEABsMobs), also licensed under LGPL-3.0:
+
+  - RisingBlockEntity and RisingBlockRenderer port the SIMULATE_RUPTURE falling-block
+    entity behavior and its renderer.
+  - TakaoGroundBreakEffectsMixin ports the ring shock-wave ground-rupture spawning logic.
+
+These components were modified for this addon. The original copyright and license
+notices of EEEABsMobs are preserved in the corresponding source files.
+
+Other incorporated projects:
+  - Pomkots Mechs (MIT) - mech entities and weapon interfaces used as dependencies.
+  - Dominion Sword (proprietary) - the addon API and control framework used as a dependency.

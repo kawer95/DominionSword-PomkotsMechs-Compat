@@ -69,6 +69,7 @@ tasks.named('processResources', ProcessResources).configure {
 
 tasks.named('jar', Jar).configure {
     from('LICENSE')
+    from('NOTICE')
     from('RELEASE_NOTES.md')
     manifest { attributes(['MixinConfigs': 'dominionsword_pomkotsmechs_compat.mixins.json']) }
     finalizedBy 'reobfJar'

@@ -1,3 +1,7 @@
+# 1.8.13
+
+- Relicenses the addon under LGPL-3.0 because it contains code ported from EEEABsMobs (LGPL-3.0). Adds a NOTICE with attribution and modification statements, and marks the ported source files.
+
 # 1.8.12
 
 - Removes the Kagenobu (景信) blade-ring effect entity and renderer entirely.
