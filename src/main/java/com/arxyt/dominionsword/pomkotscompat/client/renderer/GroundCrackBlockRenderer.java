@@ -38,7 +38,7 @@ public class GroundCrackBlockRenderer extends EntityRenderer<GroundCrackBlockEnt
         poseStack.pushPose();
         poseStack.translate(0.0D, 0.5D, 0.0D);
         poseStack.translate(0.0D, Mth.lerp(partialTick, entity.prevAnimY, entity.animY), 0.0D);
-        poseStack.mulPose(entity.getRotation());
+        poseStack.mulPose(entity.getQuaternionf());
         poseStack.translate(0.0D, -1.0D, 0.0D);
         poseStack.translate(-0.5D, -0.5D, -0.5D);
         this.dispatcher.renderSingleBlock(

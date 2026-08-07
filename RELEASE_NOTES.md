@@ -1,3 +1,7 @@
+# 1.8.18
+
+- Reproduces the realm-warden ground crack as a direct 1:1 port of EEEABsMobs: the SIMULATE_RUPTURE entity tick, the falling-block renderer transform, and the doRingShockWave spawn parameters are copied exactly. No world block is ever modified, so walking and collision are unaffected.
+
 # 1.8.17
 
 - Ground crack now hides the original block on the client only (saved and restored locally), so the cracked block is the only thing visible while it tilts in place; the server world is never modified.
