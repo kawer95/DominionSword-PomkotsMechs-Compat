@@ -1,3 +1,8 @@
+# 1.8.19
+
+- Fixes the Takao hammer ground crack to match the realm-warden look exactly: while the crack is active the original ground blocks are hidden on the client only (collision untouched), so the tilted crack blocks no longer overlap the originals.
+- The crack blocks now crack open, hold, then straighten back into the ground instead of dropping down and vanishing; the ground recovers flat when the effect ends.
+
 # 1.8.18
 
 - Reproduces the realm-warden ground crack as a direct 1:1 port of EEEABsMobs: the SIMULATE_RUPTURE entity tick, the falling-block renderer transform, and the doRingShockWave spawn parameters are copied exactly. No world block is ever modified, so walking and collision are unaffected.
@@ -213,4 +218,4 @@
 - Automatically restores PMV01, PMV01B, PMV02 and PMV03 to their combat mode when an attack order starts.
 - Uses Pomkots Mechs alpha.8's own `enablePlayerVehicleBlockDestruction` option for weapon terrain protection; no duplicate Dominion Sword option is added.
 
-The compatibility add-on is MIT-licensed. Pomkots Mechs remains a separate dependency and is not redistributed by this project.
+The compatibility add-on is LGPL-3.0-licensed (it contains code ported from EEEABsMobs). Pomkots Mechs remains a separate dependency and is not redistributed by this project.

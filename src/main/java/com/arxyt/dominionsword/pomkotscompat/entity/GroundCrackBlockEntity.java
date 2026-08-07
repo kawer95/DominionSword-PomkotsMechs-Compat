@@ -1,10 +1,12 @@
 package com.arxyt.dominionsword.pomkotscompat.entity;
 
 /**
- * Direct port of EEEABsMobs' EntityFallingBlock SIMULATE_RUPTURE mode
- * (https://github.com/EEEAB/EEEABsMobs), LGPL-3.0, by EEEAB. Modified only in package name
- * and entity registration. The world is never modified: the original block stays and the
- * entity renders a tilted copy on top, then disappears.
+ * Ground-crack block visual derived from EEEABsMobs' EntityFallingBlock SIMULATE_RUPTURE mode
+ * (https://github.com/EEEAB/EEEABsMobs), LGPL-3.0, by EEEAB.
+ *
+ * The world is never modified: the original block is hidden on the client only
+ * (see GroundCrackBlockHider) and the entity renders a tilted copy that cracks open,
+ * holds, then straightens back (摆正) into the ground before disappearing.
  */
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import net.minecraft.core.registries.Registries;
@@ -15,6 +17,7 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -33,8 +36,17 @@ public class GroundCrackBlockEntity extends Entity {
     private static final EntityDataAccessor<Integer> DURATION =
             SynchedEntityData.defineId(GroundCrackBlockEntity.class, EntityDataSerializers.INT);
     public static int MAX_ACTIVE = 600;
+    /** Ticks spent tilting up out of the ground. */
+    public static final int RISE_TICKS = 6;
+    /** Ticks spent straightening back into the ground. */
+    public static final int RECOVER_TICKS = 12;
+    /** Highest point (in blocks) the cracked block rises to. */
+    public static final float MAX_RISE = 0.34F;
+
     public float animY = 0;
     public float prevAnimY = 0;
+    /** Full tilt rotation, captured once from the synced data so both sides animate identically. */
+    private Quaternionf targetRotation;
 
     public GroundCrackBlockEntity(EntityType<? extends GroundCrackBlockEntity> entityType, Level level) {
         super(entityType, level);
@@ -61,26 +73,64 @@ public class GroundCrackBlockEntity extends Entity {
 
     @Override
     public void tick() {
-        this.setDeltaMovement(0.0D, 0.0D, 0.0D);
         super.tick();
+        if (this.targetRotation == null) {
+            this.targetRotation = new Quaternionf(this.getQuaternionf());
+        }
         if (this.tickCount >= MAX_ACTIVE) {
             this.discard();
             return;
         }
-
-        float animVY = this.getAnimVY();
-        if (animVY < 0.0F && this.tickCount <= this.getDuration()) {
-            // Keep the cracked block in place while the ground is split, avoiding interpolation jitter.
-            this.prevAnimY = this.animY;
-            return;
-        }
         this.prevAnimY = this.animY;
-        this.animY += animVY;
-        if (this.animY < -0.5F) {
+        this.animY = this.getAnimYAt(this.tickCount);
+        if (this.tickCount >= this.totalTicks()) {
             this.discard();
-            return;
         }
-        this.setAnimVY(animVY - 0.2F);
+    }
+
+    /** Total animation length in ticks: rise + hold + recover. */
+    public int totalTicks() {
+        return RISE_TICKS + Math.max(1, this.getDuration()) + RECOVER_TICKS;
+    }
+
+    /** Per-block rise variation, derived from the synced initial bounce so both sides agree. */
+    public float getRiseScale() {
+        return Mth.clamp(0.85F + this.getAnimVY() * 0.75F, 0.75F, 1.1F);
+    }
+
+    /** Vertical offset (blocks) of the cracked block at continuous time t (tick + partial tick). */
+    public float getAnimYAt(float t) {
+        float rise = MAX_RISE * this.getRiseScale();
+        if (t < RISE_TICKS) {
+            return rise * easeInOut(clamp01(t / RISE_TICKS));
+        }
+        if (t < RISE_TICKS + this.getDuration()) {
+            return rise;
+        }
+        float p = clamp01((t - RISE_TICKS - this.getDuration()) / RECOVER_TICKS);
+        return rise * (1.0F - easeInOut(p));
+    }
+
+    /** Current tilt rotation at continuous time t. Straightens back to flat during recovery. */
+    public Quaternionf getQuaternionAt(float t) {
+        Quaternionf target = this.targetRotation != null ? this.targetRotation : this.getQuaternionf();
+        if (t < RISE_TICKS) {
+            float p = easeInOut(clamp01(t / RISE_TICKS));
+            return new Quaternionf().slerp(target, p);
+        }
+        if (t < RISE_TICKS + this.getDuration()) {
+            return new Quaternionf(target);
+        }
+        float p = easeInOut(clamp01((t - RISE_TICKS - this.getDuration()) / RECOVER_TICKS));
+        return new Quaternionf(target).slerp(new Quaternionf(), p);
+    }
+
+    private static float easeInOut(float p) {
+        return p * p * (3.0F - 2.0F * p);
+    }
+
+    private static float clamp01(float v) {
+        return v < 0.0F ? 0.0F : Math.min(v, 1.0F);
     }
 
     public BlockState getBlockState() {

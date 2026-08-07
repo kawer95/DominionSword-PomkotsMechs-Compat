@@ -13,11 +13,13 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 
-/** Renders a cracked-open ground block with the realm-warden tilt and jump animation. */
+/**
+ * Renders a cracked-open ground block with the realm-warden tilt/jump animation. The block
+ * rises and tilts open, holds, then straightens back (摆正) into the ground before vanishing.
+ */
 public class GroundCrackBlockRenderer extends EntityRenderer<GroundCrackBlockEntity> {
     private final BlockRenderDispatcher dispatcher;
 
@@ -35,10 +37,11 @@ public class GroundCrackBlockRenderer extends EntityRenderer<GroundCrackBlockEnt
             return;
         }
 
+        float t = entity.tickCount + partialTick;
         poseStack.pushPose();
         poseStack.translate(0.0D, 0.5D, 0.0D);
-        poseStack.translate(0.0D, Mth.lerp(partialTick, entity.prevAnimY, entity.animY), 0.0D);
-        poseStack.mulPose(entity.getQuaternionf());
+        poseStack.translate(0.0D, entity.getAnimYAt(t), 0.0D);
+        poseStack.mulPose(entity.getQuaternionAt(t));
         poseStack.translate(0.0D, -1.0D, 0.0D);
         poseStack.translate(-0.5D, -0.5D, -0.5D);
         this.dispatcher.renderSingleBlock(
