@@ -158,7 +158,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
                         (float) Math.toRadians(level.random.nextFloat() * 40.0F - 20.0F)));
                 rotation.mul(new Quaternionf().rotationZ(
                         (float) Math.toRadians(level.random.nextFloat() * 12.0F - 6.0F)));
-                float bounce = 0.08F + (float) (distance * bounceExponent);
+                float bounce = 0.05F + (float) (distance * bounceExponent);
                 int life = 20 + level.random.nextInt(Math.max(1, (int) (radius * 20.0D)));
                 GroundCrackBlockEntity crackBlock = new GroundCrackBlockEntity(
                         level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, rotation, life, bounce);

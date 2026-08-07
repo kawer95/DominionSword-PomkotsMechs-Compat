@@ -23,9 +23,10 @@ import net.minecraftforge.network.NetworkHooks;
 import org.joml.Quaternionf;
 
 /**
- * A ground block that cracks open like the realm-warden ground pound: on the server the original
- * block is hidden (replaced with air), the entity renders a tilted copy that wobbles in place,
- * then the original block is restored so the ground recovers flat.
+ * A ground block that cracks open like the realm-warden ground pound. The server world is never
+ * modified: on the client the original block is saved and hidden (rendered as air), the entity
+ * renders a tilted copy that wobbles in place, then the original block is restored on the client
+ * so the ground recovers flat.
  */
 public class GroundCrackBlockEntity extends Entity {
     private static final EntityDataAccessor<BlockState> BLOCK_STATE =
@@ -39,16 +40,13 @@ public class GroundCrackBlockEntity extends Entity {
     private static final int MAX_ACTIVE = 600;
     private static final String TAG_BLOCK_STATE = "BlockState";
     private static final String TAG_ANIM_VY = "AnimVY";
-    private static final String TAG_ORIGIN_X = "OriginX";
-    private static final String TAG_ORIGIN_Y = "OriginY";
-    private static final String TAG_ORIGIN_Z = "OriginZ";
-
     public float animY;
     public float prevAnimY;
 
-    private BlockPos originPos;
-    private BlockState originState;
-    private boolean originHidden;
+    /** Client-side only: the original block is hidden from rendering (not modified on the server). */
+    private BlockPos clientOrigin;
+    private BlockState clientOriginalState;
+    private boolean clientHidden;
 
     public GroundCrackBlockEntity(EntityType<? extends GroundCrackBlockEntity> type, Level level) {
         super(type, level);
@@ -63,8 +61,6 @@ public class GroundCrackBlockEntity extends Entity {
         this.setRotation(rotation);
         this.setDuration(duration);
         this.setAnimVY(vy);
-        this.originPos = BlockPos.containing(x, y, z);
-        this.originState = blockState;
     }
 
     @Override
@@ -111,16 +107,16 @@ public class GroundCrackBlockEntity extends Entity {
     public void tick() {
         super.tick();
         if (this.tickCount >= MAX_ACTIVE) {
-            this.restoreOriginal();
+            this.restoreClientBlock();
             this.discard();
             return;
         }
 
-        if (!this.level().isClientSide && !this.originHidden
-                && this.originPos != null
-                && this.level().getBlockState(this.originPos).equals(this.originState)) {
-            this.level().setBlock(this.originPos, Blocks.AIR.defaultBlockState(), 3);
-            this.originHidden = true;
+        if (this.level().isClientSide && !this.clientHidden && this.tickCount >= 1) {
+            this.clientOrigin = BlockPos.containing(this.getX(), this.getY() - 1.0D, this.getZ());
+            this.clientOriginalState = this.level().getBlockState(this.clientOrigin);
+            this.level().setBlock(this.clientOrigin, Blocks.AIR.defaultBlockState(), 3);
+            this.clientHidden = true;
         }
 
         float vy = this.getAnimVY();
@@ -131,21 +127,22 @@ public class GroundCrackBlockEntity extends Entity {
         this.prevAnimY = this.animY;
         this.animY += vy;
         if (this.animY < -0.5F) {
-            this.restoreOriginal();
+            this.restoreClientBlock();
             this.discard();
             return;
         }
         this.setAnimVY(vy - 0.2F);
     }
 
-    private void restoreOriginal() {
-        if (this.level().isClientSide || !this.originHidden || this.originPos == null || this.originState == null) {
+    private void restoreClientBlock() {
+        if (!this.level().isClientSide || !this.clientHidden || this.clientOrigin == null
+                || this.clientOriginalState == null) {
             return;
         }
-        if (this.level().getBlockState(this.originPos).isAir()) {
-            this.level().setBlock(this.originPos, this.originState, 3);
+        if (this.level().getBlockState(this.clientOrigin).isAir()) {
+            this.level().setBlock(this.clientOrigin, this.clientOriginalState, 3);
         }
-        this.originHidden = false;
+        this.clientHidden = false;
     }
 
     @Override
@@ -154,8 +151,6 @@ public class GroundCrackBlockEntity extends Entity {
                 this.level().holderLookup(Registries.BLOCK), tag.getCompound(TAG_BLOCK_STATE)));
         this.setAnimVY(tag.getFloat(TAG_ANIM_VY));
         this.setDuration(tag.getInt("Duration"));
-        this.originPos = new BlockPos(tag.getInt(TAG_ORIGIN_X), tag.getInt(TAG_ORIGIN_Y), tag.getInt(TAG_ORIGIN_Z));
-        this.originState = this.getBlockState();
     }
 
     @Override
@@ -163,11 +158,6 @@ public class GroundCrackBlockEntity extends Entity {
         tag.put(TAG_BLOCK_STATE, NbtUtils.writeBlockState(this.getBlockState()));
         tag.putFloat(TAG_ANIM_VY, this.getAnimVY());
         tag.putInt("Duration", this.getDuration());
-        if (this.originPos != null) {
-            tag.putInt(TAG_ORIGIN_X, this.originPos.getX());
-            tag.putInt(TAG_ORIGIN_Y, this.originPos.getY());
-            tag.putInt(TAG_ORIGIN_Z, this.originPos.getZ());
-        }
         Quaternionf rotation = this.getRotation();
         tag.putFloat("QX", rotation.x);
         tag.putFloat("QY", rotation.y);

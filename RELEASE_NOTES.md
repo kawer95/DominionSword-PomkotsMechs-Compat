@@ -1,3 +1,11 @@
+# 1.8.17
+
+- Ground crack now hides the original block on the client only (saved and restored locally), so the cracked block is the only thing visible while it tilts in place; the server world is never modified.
+
+# 1.8.16
+
+- Ground crack no longer modifies the original block: the opaque crack-block copy exactly covers the block's space (so the original is only hidden visually), tilts and wobbles in place, then disappears to reveal the untouched original. Removes the previous air-swap and restore logic.
+
 # 1.8.15
 
 - Reworks the realm-warden ground crack to match the source exactly: the cracked block hides the original ground block while it tilts in place (small wobble, not flying), holds briefly, then the original block is restored so the ground recovers.
