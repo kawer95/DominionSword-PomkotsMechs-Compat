@@ -1,3 +1,7 @@
+# 1.8.23
+
+- Adds temporary server-side debug traces for two reported issues: Takao swings that animate but deal no damage, and the mech drifting straight ahead after an attack ends. Logs the charge action lifecycle (start/release/reset), the fire-tick AOE box contents, the source of every driver input and movement frame, and stop() calls. Diagnostic build; logs carry the [DS-POMKOTS-TAKAO], [DS-POMKOTS-INPUT] and [DS-POMKOTS-MOVE] prefixes.
+
 # 1.8.22
 
 - Keeps all existing Takao ground-slam particles (explosion, cloud, block debris burst and ring) and adds a large splashing spark burst at the impact point using Pomkots Mechs' native SPARK particles, scaled by charge level.

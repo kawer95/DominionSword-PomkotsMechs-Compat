@@ -17,8 +17,11 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,6 +31,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Adds two independent ground effects to the Takao (大锤) charge hammer impact:
@@ -49,6 +54,10 @@ public abstract class TakaoGroundBreakEffectsMixin {
     private void dominion$spawnGroundBreak(ActionWeapon.WeaponMechInterface mechInterface, int tick, boolean isOnFire,
                                            CallbackInfo ci) {
         try {
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-TAKAO] weaponTick mech={} tick={} onFire={}",
+                    mechInterface.getMechEntity() == null ? "?" : mechInterface.getMechEntity().getUUID(),
+                    tick, isOnFire);
             if (!isOnFire) return;
             Level world = mechInterface.getWorld();
             if (!(world instanceof ServerLevel serverLevel)) return;
@@ -82,9 +91,46 @@ public abstract class TakaoGroundBreakEffectsMixin {
             // Two separate effects: flying debris splash + ground crack that recovers.
             dominion$spawnSplashBlocks(serverLevel, center, scale);
             dominion$spawnCrackBlocks(serverLevel, center, scale);
+            dominion$debugDumpAoe(serverLevel, mechInterface);
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-TAKAO] effects spawned mech={} center=({},{},{})",
+                    mechInterface.getMechEntity() == null ? "?" : mechInterface.getMechEntity().getUUID(),
+                    String.format(Locale.ROOT, "%.2f", center.x),
+                    String.format(Locale.ROOT, "%.2f", center.y),
+                    String.format(Locale.ROOT, "%.2f", center.z));
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }
+    }
+
+    /** Dumps the same AOE box the native Takao damage loop checks, and the living targets inside it. */
+    @Unique
+    private static void dominion$debugDumpAoe(ServerLevel level, ActionWeapon.WeaponMechInterface mech) {
+        Vec3 pilePos1 = new Vec3(6.5 * mech.isRight(), 4.0F, 18F)
+                .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
+        Vec3 pilePos2 = new Vec3(-6.5 * mech.isRight(), -4F, -4F)
+                .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
+        AABB box = new AABB(pilePos1, pilePos2);
+        List<Entity> entities = level.getEntities(null, box);
+        StringBuilder living = new StringBuilder();
+        for (Entity entity : entities) {
+            if (entity instanceof LivingEntity le) {
+                if (living.length() > 0) living.append(" | ");
+                living.append(entity.getType().getDescription().getString())
+                        .append('#')
+                        .append(entity.getUUID().toString().substring(0, 8))
+                        .append(" hp=").append(String.format(Locale.ROOT, "%.1f", le.getHealth()))
+                        .append(" d=").append(String.format(Locale.ROOT, "%.1f",
+                                Math.sqrt(entity.distanceToSqr(mech.position()))));
+            }
+        }
+        DominionSwordPomkotsCompatMod.LOGGER.info(
+                "[DS-POMKOTS-TAKAO] fireAOE mech={} box=[{},{},{} -> {},{},{}] entities={} living=[{}]",
+                mech.getMechEntity() == null ? "?" : mech.getMechEntity().getUUID(),
+                String.format(Locale.ROOT, "%.1f", box.minX), String.format(Locale.ROOT, "%.1f", box.minY),
+                String.format(Locale.ROOT, "%.1f", box.minZ), String.format(Locale.ROOT, "%.1f", box.maxX),
+                String.format(Locale.ROOT, "%.1f", box.maxY), String.format(Locale.ROOT, "%.1f", box.maxZ),
+                entities.size(), living);
     }
 
     /** Large splashing spark burst at the impact point, using Pomkots Mechs' native SPARK particles. */

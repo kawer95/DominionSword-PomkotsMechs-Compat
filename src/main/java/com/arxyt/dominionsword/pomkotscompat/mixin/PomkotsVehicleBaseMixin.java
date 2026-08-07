@@ -2,12 +2,10 @@ package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
-import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -24,7 +22,19 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
 
     @Override
     public void dominion$setControlFrame(MechControlFrame frame) {
-        dominion$controlFrame = frame == null ? MechControlFrame.INACTIVE : frame;
+        MechControlFrame next = frame == null ? MechControlFrame.INACTIVE : frame;
+        MechControlFrame prev = dominion$controlFrame;
+        dominion$controlFrame = next;
+        PomkotsVehicleBase mech = (PomkotsVehicleBase) (Object) this;
+        if (mech.level() != null && !mech.level().isClientSide
+                && (prev == null || prev.forward() != next.forward() || prev.strafe() != next.strafe())) {
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-MOVE] frame change mech={} forward {} -> {} strafe {} -> {} active {} -> {} gt={}",
+                    mech.getUUID(), prev == null ? -1 : prev.forward(), next.forward(),
+                    prev == null ? -1 : prev.strafe(), next.strafe(),
+                    prev == null ? false : prev.active(), next.active(),
+                    mech.level().getGameTime());
+        }
     }
 
     @Override
@@ -52,16 +62,27 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
     private void dominion$applyQueuedDriverInput(CallbackInfo ci) {
         if (!dominion$hasQueuedDriverInput) return;
         dominion$hasQueuedDriverInput = false;
-        dominion$lastAppliedDriverInput = dominion$queuedDriverInput;
         PomkotsVehicleBase mech = (PomkotsVehicleBase) (Object) this;
+        DriverInput nativeBefore = mech.getDriverInput();
+        short prevApplied = dominion$lastAppliedDriverInput;
+        dominion$lastAppliedDriverInput = dominion$queuedDriverInput;
         mech.setDriverInput(new DriverInput(dominion$queuedDriverInput, mech.getDriverInput()));
-        if (mech.level() != null && !mech.level().isClientSide && mech.level().getGameTime() % 10L == 0L) {
+        if (mech.level() != null && !mech.level().isClientSide) {
+            long gt = mech.level().getGameTime();
+            if (gt % 10L == 0L || dominion$queuedDriverInput != prevApplied) {
+                DominionSwordPomkotsCompatMod.LOGGER.info(
+                        "[DS-POMKOTS-INPUT] mech={} queued={} prevApplied={} nativeBefore={} gt={}",
+                        mech.getUUID(), dominion$queuedDriverInput, prevApplied,
+                        nativeBefore == null ? -1 : nativeBefore.getStatus(), gt);
+            }
+        }
+        if (mech.level() != null && !mech.level().isClientSide && mech.level().getGameTime() % 40L == 0L) {
             LivingEntity driver = mech.getDrivingPassenger();
-            boolean dominionPilot = driver instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech);
             DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-WEAPON] input mech={} bits={} last={} driver={} dominionPilot={}",
-                    mech.getUUID(), dominion$queuedDriverInput, dominion$lastAppliedDriverInput,
-                    driver == null ? "none" : driver.getType().toString(), dominionPilot);
+                    "[DS-POMKOTS-INPUT] pilot mech={} driver={} frame={}",
+                    mech.getUUID(),
+                    driver == null ? "none" : driver.getType().toString(),
+                    dominion$controlFrame);
         }
     }
 
@@ -75,9 +96,27 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
     )
     private void dominion$applyUnitPilotInput(Vec3 travelVector, CallbackInfo ci) {
         MechControlFrame frame = dominion$controlFrame;
-        if (frame == null || !frame.active()) return;
         LivingEntity pilot = ((PomkotsVehicleBase) (Object) this).getDrivingPassenger();
         if (pilot == null || pilot instanceof net.minecraft.world.entity.player.Player) return;
+        if (frame == null || !frame.active()) {
+            if ((pilot.zza != 0.0F || pilot.xxa != 0.0F)
+                    && ((PomkotsVehicleBase) (Object) this).level().getGameTime() % 10L == 0L) {
+                DominionSwordPomkotsCompatMod.LOGGER.info(
+                        "[DS-POMKOTS-MOVE] leftover pilot input mech={} zza={} xxa={} frame=INACTIVE gt={}",
+                        ((PomkotsVehicleBase) (Object) this).getUUID(), pilot.zza, pilot.xxa,
+                        ((PomkotsVehicleBase) (Object) this).level().getGameTime());
+            }
+            return;
+        }
+        if (((PomkotsVehicleBase) (Object) this).level().getGameTime() % 10L == 0L
+                && (frame.forward() != 0.0F || frame.strafe() != 0.0F)) {
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-MOVE] frame move mech={} forward={} strafe={} yaw={} pos=({},{}) gt={}",
+                    ((PomkotsVehicleBase) (Object) this).getUUID(), frame.forward(), frame.strafe(), frame.yaw(),
+                    String.format(java.util.Locale.ROOT, "%.1f", ((PomkotsVehicleBase) (Object) this).getX()),
+                    String.format(java.util.Locale.ROOT, "%.1f", ((PomkotsVehicleBase) (Object) this).getZ()),
+                    ((PomkotsVehicleBase) (Object) this).level().getGameTime());
+        }
         pilot.zza = frame.forward();
         pilot.xxa = frame.strafe();
         pilot.setYRot(frame.yaw());

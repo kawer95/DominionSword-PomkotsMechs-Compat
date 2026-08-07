@@ -601,6 +601,13 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         float commandedYaw = vehicle.getYRot() + Mth.clamp(yawDelta, -18.0F, 18.0F);
         float forward = Math.abs(yawDelta) <= 10.0F ? 1.0F : 0.0F;
         if (combatApproach && finalDistance < 1.0D) forward = 0.0F;
+        if (mech.level().getGameTime() % 10L == 0L) {
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-MOVE] driveTo mech={} forward={} yawDelta={} finalDist={} point={}/{} gt={}",
+                    mech.getUUID(), forward, String.format(Locale.ROOT, "%.1f", yawDelta),
+                    String.format(Locale.ROOT, "%.1f", finalDistance), active.index, points.size(),
+                    mech.level().getGameTime());
+        }
         setFrame(mech, forward, 0.0F, commandedYaw, 0.0F);
         INPUT_BITS.put(vehicle.getUUID(), forward > 0 ? FORWARD : (short)0);
         ACTIVE.add(mech.getUUID());
@@ -1121,6 +1128,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void stopMovement(PomkotsVehicleBase mech) {
+        DominionSwordPomkotsCompatMod.LOGGER.info(
+                "[DS-POMKOTS-MOVE] stopMovement mech={} gt={}",
+                mech.getUUID(), mech.level().getGameTime());
         INPUT_BITS.put(mech.getUUID(), (short)0);
         ((MechControlBridge)mech).dominion$setControlFrame(new MechControlFrame(true, 0, 0, mech.getYRot(), 0));
         mech.setDeltaMovement(mech.getDeltaMovement().multiply(0.35D, 1.0D, 0.35D));
@@ -1128,6 +1138,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     private static void stop(Entity vehicle, boolean clearTasks) {
         if (vehicle instanceof PomkotsVehicleBase mech) {
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-MOVE] stop() called mech={} clearTasks={} frameBefore={} gt={}",
+                    mech.getUUID(), clearTasks, ((MechControlBridge)mech).dominion$getControlFrame(),
+                    mech.level().getGameTime());
             submit(mech, (short)0);
             mech.getLockTargets().clearLockTargets();
             ((MechControlBridge)mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
