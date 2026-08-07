@@ -14,6 +14,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -62,7 +63,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 double z = center.z + Math.sin(angle) * radius;
                 serverLevel.sendParticles(blockParticle, x, center.y + 0.12D, z, 3, 0.18D, 0.08D, 0.18D, 0.18D);
             }
-            dominion$spawnRisingBlocks(serverLevel, center, scale);
+            dominion$spawnRupturedBlocks(serverLevel, center, scale);
             GroundCrackEffectEntity crack = new GroundCrackEffectEntity(
                     PomkotsEntities.GROUND_CRACK.get(), serverLevel);
             crack.moveTo(center.x, center.y, center.z, 0.0F, 0.0F);
@@ -74,8 +75,8 @@ public abstract class TakaoGroundBreakEffectsMixin {
     }
 
     @Unique
-    private static void dominion$spawnRisingBlocks(ServerLevel level, Vec3 center, float scale) {
-        double radius = 5.6D * scale;
+    private static void dominion$spawnRupturedBlocks(ServerLevel level, Vec3 center, float scale) {
+        double radius = 2.2D * scale;
         int minX = Mth.floor(center.x - radius);
         int maxX = Mth.ceil(center.x + radius);
         int minZ = Mth.floor(center.z - radius);
@@ -87,10 +88,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 double dx = x + 0.5D - center.x;
                 double dz = z + 0.5D - center.z;
                 double distance = Math.sqrt(dx * dx + dz * dz);
-                if (distance > radius || distance < 0.75D) {
-                    continue;
-                }
-                if (level.random.nextFloat() > Mth.clamp(1.15D - distance / radius, 0.18D, 0.72D)) {
+                if (distance > radius || distance < 0.4D) {
                     continue;
                 }
 
@@ -101,13 +99,24 @@ public abstract class TakaoGroundBreakEffectsMixin {
                     continue;
                 }
 
-                double outward = Math.max(distance, 0.001D);
-                double bounce = Mth.clamp(0.92D - distance / radius * 0.38D + level.random.nextDouble() * 0.22D,
-                        0.38D, 0.92D);
-                Vec3 velocity = new Vec3(dx / outward * 0.12D, bounce, dz / outward * 0.12D);
-                int life = 22 + level.random.nextInt(14) + Mth.floor(distance * 2.0D);
+                double distanceToMax = radius - distance;
+                double bounceExponent = Math.min(1.0D / (radius * radius), 0.1D)
+                        * (0.75D + distanceToMax / radius * 1.25D);
+                Vec3 rotAxis = new Vec3(0.0D, -1.0D, 0.0D).cross(new Vec3(dx, 0.0D, dz)).normalize();
+                float rotAngle = (float) Math.toRadians(
+                        distance / radius * 15.0F + level.random.nextFloat() * 10.0F - 5.0F);
+                Quaternionf rotation = new Quaternionf()
+                        .rotationAxis(rotAngle, (float) rotAxis.x, (float) rotAxis.y, (float) rotAxis.z);
+                rotation.mul(new Quaternionf().rotationX(
+                        (float) Math.toRadians(level.random.nextFloat() * 12.0F - 6.0F)));
+                rotation.mul(new Quaternionf().rotationY(
+                        (float) Math.toRadians(level.random.nextFloat() * 40.0F - 20.0F)));
+                rotation.mul(new Quaternionf().rotationZ(
+                        (float) Math.toRadians(level.random.nextFloat() * 12.0F - 6.0F)));
+                float bounce = 0.6F + (float) (distance * bounceExponent);
+                int life = 20 + level.random.nextInt(Math.max(1, (int) (radius * 20.0D)));
                 RisingBlockEntity risingBlock = new RisingBlockEntity(
-                        level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, velocity);
+                        level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, rotation, bounce);
                 level.addFreshEntity(risingBlock);
             }
         }

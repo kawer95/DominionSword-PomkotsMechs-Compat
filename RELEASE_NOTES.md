@@ -1,3 +1,7 @@
+# 1.8.11
+
+- Replaces the hammer's flying-debris blocks with the realm-warden ground rupture: ground blocks around the impact tilt randomly, jump up and settle back, then the visuals fade so the ground recovers flat. Ports the exact SIMULATE_RUPTURE entity behavior and renderer from EEEABsMobs.
+
 # 1.8.10
 
 - Reworks the Takao (大锤) ground effect to match the realm-warden ground pound: a soft radial ring (bright outer rim fading inward, transparent center) grows linearly across the ground to 8 blocks and fades out, instead of the previous jagged crack pattern.
