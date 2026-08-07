@@ -12,7 +12,8 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
-/** Renders a realm-warden style flat radial crack ring lying on the ground, growing and fading. */
+/** Renders the realm-warden ground-pound ring: a soft radial ring lying flat on the ground,
+ * growing outward and fading like the ground cracking open and then recovering. */
 public class GroundCrackEffectRenderer extends EntityRenderer<GroundCrackEffectEntity> {
     private static final ResourceLocation TEXTURE =
             new ResourceLocation(DominionSwordPomkotsCompatMod.MODID, "textures/entity/ground_crack.png");
@@ -28,7 +29,7 @@ public class GroundCrackEffectRenderer extends EntityRenderer<GroundCrackEffectE
                        PoseStack poseStack, MultiBufferSource bufferSource, int packedLight) {
         float age = entity.tickCount + partialTick;
         float progress = Math.min(1.0F, age / LIFETIME);
-        float radius = (0.5F + 7.5F * progress * progress) * entity.getEffectScale();
+        float radius = 8.0F * progress * entity.getEffectScale();
         float alpha = Math.max(0.0F, 1.0F - progress);
 
         poseStack.pushPose();

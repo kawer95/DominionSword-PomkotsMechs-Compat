@@ -1,3 +1,7 @@
+# 1.8.10
+
+- Reworks the Takao (大锤) ground effect to match the realm-warden ground pound: a soft radial ring (bright outer rim fading inward, transparent center) grows linearly across the ground to 8 blocks and fades out, instead of the previous jagged crack pattern.
+
 # 1.8.9
 
 - Fixes the Kagenobu (景信) blade-ring being invisible: the effect quads now carry a full-bright lightmap so they actually render.
