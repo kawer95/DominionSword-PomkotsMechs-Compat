@@ -1,3 +1,10 @@
+# 1.7.22
+
+- Introduces a priority weapon state machine for PMVC01 piloting.
+- Within 10 blocks, any melee weapon switches the mech to melee mode: it closes distance and presses all equipped melee weapons (both arms alternate naturally for non-concurrent swords), while shoulder ordnance keeps firing and hand ranged weapons stop.
+- Beyond 10 blocks, both hand ranged weapons fire together, with hand grenade launchers and multi-lock weapons keeping their cooldown pulses and shoulder grenade launchers keeping their existing schedule.
+- Centralizes per-tick driver input so movement, hand weapons and shoulder bursts share one input mask instead of overwriting each other.
+
 # 1.7.21
 
 - Fires main-hand and off-hand weapons together: the main hand holds fire while the off hand runs short bursts with a cooldown, so a gatling and machine gun no longer starve each other.

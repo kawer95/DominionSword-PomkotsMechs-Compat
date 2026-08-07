@@ -55,19 +55,19 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final long AUTO_CONTINUOUS_EQUIPMENT_INTERVAL = 1_200L;
     private static final long AUTO_ORDNANCE_INTERVAL = 2_000L;
     private static final long WEAPON_DEBUG_INTERVAL = 10L;
-    private static final int OFFHAND_BURST_TICKS = 20;
     private static final long OFFHAND_RANGED_INTERVAL = 100L;
     private static final long MELEE_PRESS_INTERVAL = 40L;
-    private static final short MOVEMENT_MASK = (short)(FORWARD | BACK | LEFT | RIGHT | JUMP | EVASION);
 
     private static final Set<String> MELEE_WEAPONS = Set.of(
             "tsurugi", "kagenobu", "takao", "jinba", "gassan", "mitake", "tenpou");
     private static final Set<String> ENGINEERING_WEAPONS = Set.of(
             "amagi", "daigomaru", "shoutou", "wada");
     private static final Set<String> GROUND_SKILL_WEAPONS = Set.of("dodo", "nosuri", "mukudori");
+    private static final Set<String> GRENADE_HAND_WEAPONS = Set.of("kagami");
     private static final Map<UUID, ActiveRoute> ROUTES = new ConcurrentHashMap<>();
     private static final Map<UUID, JumpState> JUMPS = new ConcurrentHashMap<>();
     private static final Map<UUID, PendingPulse> PULSES = new ConcurrentHashMap<>();
+    private static final Map<UUID, Short> INPUT_BITS = new ConcurrentHashMap<>();
     private static final Map<UUID, CombatState> COMBAT = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> AUTO_AUXILIARY_READY_TICKS = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> SUWA_BURST_REMAINING_TICKS = new ConcurrentHashMap<>();
@@ -286,24 +286,31 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             if (distance > reach) return driveTo(vehicle, target.position(), true);
             aimAt(pilot, target.getBoundingBox().getCenter());
             setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
-            WeaponSlot weapon = melee.get(Math.floorMod(state.meleeCursor++, melee.size()));
-            if (now >= state.nextMeleeTick) {
-                PendingPulse existing = PULSES.get(mech.getUUID());
-                if (existing != null) {
-                    existing.concurrentPrimaryBits |= weapon.bit();
-                    DominionSwordPomkotsCompatMod.LOGGER.info(
-                            "[DS-POMKOTS-WEAPON] melee concurrent mech={} weapon={} slot={} bit={} pulse={}",
-                            mech.getUUID(), weapon.itemId(), weapon.inventorySlot(), weapon.bit(), existing.bits);
-                } else {
-                    int hold = "takao".equals(weapon.itemId()) ? 14 : weapon.continuous() ? 8 : 1;
-                    DominionSwordPomkotsCompatMod.LOGGER.info(
-                            "[DS-POMKOTS-WEAPON] melee fire mech={} weapon={} slot={} bit={} hold={} distance={} reach={}",
-                            mech.getUUID(), weapon.itemId(), weapon.inventorySlot(), weapon.bit(), hold,
-                            String.format(Locale.ROOT, "%.2f", distance),
-                            String.format(Locale.ROOT, "%.2f", reach));
-                    PULSES.put(mech.getUUID(), new PendingPulse(weapon.bit(), hold));
-                }
+            short meleeBits = 0;
+            WeaponSlot chargeWeapon = null;
+            for (WeaponSlot weapon : melee) {
+                if ("takao".equals(weapon.itemId())) chargeWeapon = weapon;
+                else meleeBits |= weapon.bit();
+            }
+            // Shoulder ordnance keeps firing while the melee weapon presses; when the shoulders
+            // are cooling, the charge hammer gets its own press-release pulse.
+            scheduleAutomaticEquipment(mech, target, state, now, null);
+            if (chargeWeapon != null && now >= state.nextMeleeTick
+                    && !PULSES.containsKey(mech.getUUID())) {
+                PULSES.put(mech.getUUID(), new PendingPulse(chargeWeapon.bit(), 14));
                 state.nextMeleeTick = now + MELEE_PRESS_INTERVAL;
+                DominionSwordPomkotsCompatMod.LOGGER.info(
+                        "[DS-POMKOTS-WEAPON] melee charge fire mech={} weapon={} slot={} bit={}",
+                        mech.getUUID(), chargeWeapon.itemId(), chargeWeapon.inventorySlot(), chargeWeapon.bit());
+            }
+            INPUT_BITS.put(mech.getUUID(), meleeBits);
+            if (now % 10L == 0L) {
+                DominionSwordPomkotsCompatMod.LOGGER.info(
+                        "[DS-POMKOTS-WEAPON] melee mode mech={} bits={} weapons={} charge={} distance={} pulse={}",
+                        mech.getUUID(), meleeBits,
+                        melee.stream().map(w -> w.itemId() + "@" + w.inventorySlot()).toList(),
+                        chargeWeapon == null ? "none" : chargeWeapon.itemId(),
+                        String.format(Locale.ROOT, "%.2f", distance), PULSES.containsKey(mech.getUUID()));
             }
             ACTIVE.add(mech.getUUID());
             return true;
@@ -347,58 +354,36 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 ensureHandReload(custom, offhand.inventorySlot());
                 ensureHandReload(custom, main.inventorySlot());
             }
-            if (now >= state.nextOffhandTick) {
-                state.offhandUntilTick = now + (offhand.continuous() ? OFFHAND_BURST_TICKS : 1);
-                state.nextOffhandTick = now + OFFHAND_RANGED_INTERVAL;
-                DominionSwordPomkotsCompatMod.LOGGER.info(
-                        "[DS-POMKOTS-WEAPON] offhand burst mech={} weapon={} slot={} bit={} press={} next={}",
-                        mech.getUUID(), offhand.itemId(), offhand.inventorySlot(), offhand.bit(),
-                        state.offhandUntilTick - now, OFFHAND_RANGED_INTERVAL);
-            }
-            if (now < state.offhandUntilTick) handBits |= offhand.bit();
         } else if (mech instanceof Pmvc01Entity custom) {
             ensureHandReload(custom, main.inventorySlot());
         }
-
-        PendingPulse activePulse = PULSES.get(mech.getUUID());
-        if (activePulse != null) {
-            if (activePulse.allowConcurrentPrimary && !main.multiLock()) {
-                activePulse.concurrentPrimaryBits = handBits;
-                DominionSwordPomkotsCompatMod.LOGGER.info(
-                        "[DS-POMKOTS-WEAPON] ranged concurrent mech={} bits={} pulse={}",
-                        mech.getUUID(), handBits, activePulse.bits);
+        // Hand grenade launchers and multi-lock weapons keep their cooldown: they press for one
+        // tick and release instead of being held, so they cannot fire every frame.
+        WeaponSlot ordnance = null;
+        for (WeaponSlot w : ranged) {
+            if (GRENADE_HAND_WEAPONS.contains(w.itemId()) || w.multiLock()) {
+                handBits = (short)(handBits & ~w.bit());
+                if (ordnance == null) ordnance = w;
             }
-            return true;
         }
-        if (scheduleAutomaticEquipment(mech, target, state, now, main)) {
-            PendingPulse scheduledPulse = PULSES.get(mech.getUUID());
-            if (scheduledPulse != null && scheduledPulse.allowConcurrentPrimary && !main.multiLock()) {
-                scheduledPulse.concurrentPrimaryBits = handBits;
-                DominionSwordPomkotsCompatMod.LOGGER.info(
-                        "[DS-POMKOTS-WEAPON] ranged concurrent scheduled mech={} bits={} pulse={}",
-                        mech.getUUID(), handBits, scheduledPulse.bits);
+        scheduleAutomaticEquipment(mech, target, state, now, main);
+        if (ordnance != null && now >= state.nextPrimaryTick && !PULSES.containsKey(mech.getUUID())) {
+            if (ordnance.multiLock() && mech instanceof Pmvc01Entity custom) {
+                prepareCustomMultiLock(custom, ordnance.inventorySlot(), target);
             }
-            return true;
+            PULSES.put(mech.getUUID(), new PendingPulse(ordnance.bit(), 1));
+            state.nextPrimaryTick = now + OFFHAND_RANGED_INTERVAL;
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-WEAPON] hand ordnance fire mech={} weapon={} slot={} bit={}",
+                    mech.getUUID(), ordnance.itemId(), ordnance.inventorySlot(), ordnance.bit());
         }
-        if (main.multiLock() && mech instanceof Pmvc01Entity custom && now >= state.nextPrimaryTick) {
-            prepareCustomMultiLock(custom, main.inventorySlot(), target);
-            PULSES.put(mech.getUUID(), new PendingPulse(main.bit(), 1));
-            state.nextPrimaryTick = now + 80L;
+        INPUT_BITS.put(mech.getUUID(), handBits);
+        if (now % 10L == 0L) {
             DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-WEAPON] ranged multlock mech={} weapon={} slot={} bit={} count={}",
-                    mech.getUUID(), main.itemId(), main.inventorySlot(), main.bit(),
-                    Pmvc01Entity.getMultiLockTargetNum(weapon(custom, main.inventorySlot())));
-        } else if (now >= state.nextPrimaryTick) {
-            submit(mech, handBits);
-            DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-WEAPON] ranged fire mech={} main={} offhand={} submit={}",
+                    "[DS-POMKOTS-WEAPON] ranged fire mech={} main={} offhand={} bits={} ordnance={}",
                     mech.getUUID(), main.itemId() + "@" + main.inventorySlot(),
                     ranged.size() > 1 ? ranged.get(1).itemId() + "@" + ranged.get(1).inventorySlot() : "none",
-                    handBits);
-        } else if (now % 20L == 0L) {
-            DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-WEAPON] ranged gated mech={} weapon={} slot={} nextPrimaryTick={} now={}",
-                    mech.getUUID(), main.itemId(), main.inventorySlot(), state.nextPrimaryTick, now);
+                    handBits, ordnance == null ? "none" : ordnance.itemId());
         }
         ACTIVE.add(mech.getUUID());
         return true;
@@ -539,54 +524,53 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                     mech.getLockTargets().clearLockTargets();
                     cancelPulse(id, "combat interrupted");
                     COMBAT.remove(id, combat);
+                    INPUT_BITS.remove(id);
+                    ACTIVE.remove(id);
                 }
             }
             JumpState jump = JUMPS.get(id);
             if (jump != null && jump.manual) advanceJump(mech, jump);
             PendingPulse pulse = PULSES.get(id);
-            if (pulse != null) {
-                if (pulse.ammoSlot >= 0 && mech instanceof Pmvc01Entity custom) {
-                    Pmvc01Entity.AmmoManager ammo = custom.getAmmoManager(pulse.ammoSlot);
-                    if (ammo.getBulletNum() <= 0) {
-                        if (!ammo.isReloading() && ammo.getMagazineNum() > 0) {
-                            ammo.startReload();
-                            DominionSwordPomkotsCompatMod.LOGGER.info(
-                                    "[DominionSword Pomkots Compat] PMVC shoulder reload started: mech={}, slot={}, magazines={}",
-                                    mech.getUUID(), pulse.ammoSlot, ammo.getMagazineNum());
-                        } else if (!ammo.isReloading() && ammo.getMagazineNum() <= 0) {
-                            submit(mech, (short) 0);
-                            cancelPulse(id, "out of ammunition");
-                        }
-                        if (pulse.allowConcurrentPrimary && pulse.concurrentPrimaryBits != 0) {
-                            submit(mech, pulse.concurrentPrimaryBits);
-                        }
-                        continue;
-                    }
-                    if (pulse.waitingForReload) {
+            if (pulse != null && pulse.ammoSlot >= 0 && mech instanceof Pmvc01Entity custom) {
+                Pmvc01Entity.AmmoManager ammo = custom.getAmmoManager(pulse.ammoSlot);
+                if (ammo.getBulletNum() <= 0) {
+                    if (!ammo.isReloading() && ammo.getMagazineNum() > 0) {
+                        ammo.startReload();
                         DominionSwordPomkotsCompatMod.LOGGER.info(
-                                "[DominionSword Pomkots Compat] PMVC shoulder reload completed; firing: mech={}, slot={}, bullets={}",
-                                mech.getUUID(), pulse.ammoSlot, ammo.getBulletNum());
-                        pulse.waitingForReload = false;
+                                "[DominionSword Pomkots Compat] PMVC shoulder reload started: mech={}, slot={}, magazines={}",
+                                mech.getUUID(), pulse.ammoSlot, ammo.getMagazineNum());
+                    } else if (!ammo.isReloading() && ammo.getMagazineNum() <= 0) {
+                        cancelPulse(id, "out of ammunition");
                     }
+                    submit(mech, INPUT_BITS.getOrDefault(id, (short)0));
+                    continue;
                 }
+                if (pulse.waitingForReload) {
+                    DominionSwordPomkotsCompatMod.LOGGER.info(
+                            "[DominionSword Pomkots Compat] PMVC shoulder reload completed; firing: mech={}, slot={}, bullets={}",
+                            mech.getUUID(), pulse.ammoSlot, ammo.getBulletNum());
+                    pulse.waitingForReload = false;
+                }
+            }
+            pulse = PULSES.get(id);
+            short inputBits = INPUT_BITS.getOrDefault(id, (short)0);
+            if (pulse != null) {
                 if (pulse.remainingTicks > 1) {
-                    short submitted = (short) (pulse.bits | pulse.concurrentPrimaryBits);
-                    short movement = (short) (((MechControlBridge) mech).dominion$getQueuedDriverInput() & MOVEMENT_MASK);
-                    submit(mech, (short)(movement | submitted));
+                    inputBits |= pulse.bits;
                     if (serverTick % 5L == 0L) {
                         DominionSwordPomkotsCompatMod.LOGGER.info(
-                                "[DS-POMKOTS-WEAPON] pulse tick mech={} bits={} concurrent={} submitted={} movement={} remaining={} slot={}",
-                                mech.getUUID(), pulse.bits, pulse.concurrentPrimaryBits, submitted, movement,
+                                "[DS-POMKOTS-WEAPON] pulse tick mech={} bits={} input={} submitted={} remaining={} slot={}",
+                                mech.getUUID(), pulse.bits, inputBits, (short)(inputBits | pulse.bits),
                                 pulse.remainingTicks, pulse.ammoSlot);
                     }
                 }
-                else submit(mech, (short)(((MechControlBridge) mech).dominion$getQueuedDriverInput() & MOVEMENT_MASK));
                 if (--pulse.remainingTicks <= 0) {
                     completePulse(id, serverTick);
                 } else if (pulse.accumulatesFiringTime) {
                     SUWA_BURST_REMAINING_TICKS.put(id, Math.max(0, pulse.remainingTicks - 1));
                 }
             }
+            submit(mech, inputBits);
         }
     }
 
@@ -616,7 +600,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         float forward = Math.abs(yawDelta) <= 10.0F ? 1.0F : 0.0F;
         if (combatApproach && finalDistance < 1.0D) forward = 0.0F;
         setFrame(mech, forward, 0.0F, commandedYaw, 0.0F);
-        submit(mech, forward > 0 ? FORWARD : (short)0);
+        INPUT_BITS.put(vehicle.getUUID(), forward > 0 ? FORWARD : (short)0);
         ACTIVE.add(mech.getUUID());
         return true;
     }
@@ -628,7 +612,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (jump.step == 0 && mech.onGround() && Math.abs(yawDelta) > 6.0F) {
             float turningYaw = mech.getYRot() + Mth.clamp(yawDelta, -18.0F, 18.0F);
             setFrame(mech, 0.0F, 0.0F, turningYaw, 0.0F);
-            submit(mech, (short)0);
+            INPUT_BITS.put(mech.getUUID(), (short)0);
             ACTIVE.add(mech.getUUID());
             return true;
         }
@@ -639,7 +623,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (!jump.launchPrimed) {
             jump.launchPrimed = true;
             setFrame(mech, 0.0F, 0.0F, jump.heading, 0.0F);
-            submit(mech, JUMP);
+            INPUT_BITS.put(mech.getUUID(), JUMP);
             ACTIVE.add(mech.getUUID());
             return true;
         }
@@ -649,7 +633,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         mech.setNoGravity(true);
         mech.setDeltaMovement(Vec3.ZERO);
         setFrame(mech, 0.0F, 0.0F, jump.heading, 0.0F);
-        submit(mech, (short)0);
+        INPUT_BITS.put(mech.getUUID(), (short)0);
         mech.move(MoverType.SELF, desired.subtract(mech.position()));
         mech.setDeltaMovement(Vec3.ZERO);
         mech.fallDistance = 0.0F;
@@ -865,7 +849,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         int cooldownTicksAfter = shoulderGatling ? 20 * 20 : 0;
         if (shoulderGatling) SUWA_BURST_REMAINING_TICKS.put(mechId, pressTicks);
         PULSES.put(mech.getUUID(), new PendingPulse(auxiliary.bit(), pressTicks,
-                auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0, shoulderGatling));
+                auxiliary.inventorySlot(), cooldownTicksAfter, waitingAmmoSlot >= 0));
         DominionSwordPomkotsCompatMod.LOGGER.info(
                 "[DominionSword Pomkots Compat] PMVC automatic shoulder weapon scheduled: mech={}, weapon={}, slot={}, bit={}, bullets={}, magazines={}, waitingForReload={}",
                 mech.getUUID(), auxiliary.itemId(), auxiliary.inventorySlot(), auxiliary.bit(), ammo.getBulletNum(),
@@ -966,17 +950,18 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static boolean attackInFlight(Pmv03pEntity mech, LivingEntity target,
                                           List<WeaponSlot> ranged, CombatState state) {
         ((MechControlBridge)mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
+        long now = mech.level().getGameTime();
         Vec3 delta = target.getBoundingBox().getCenter().subtract(mech.position());
         double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
         float desiredYaw = yawTo(mech.position(), target.position());
         float desiredPitch = (float)(-(Mth.atan2(delta.y, horizontal) * Mth.RAD_TO_DEG));
         float yawError = Mth.wrapDegrees(desiredYaw - mech.getYRot());
         float pitchError = Mth.wrapDegrees(desiredPitch - mech.getXRot());
-        if (PULSES.containsKey(mech.getUUID())) return true;
         boolean aligned = Math.abs(yawError) <= 12.0F && Math.abs(pitchError) <= 12.0F
                 && mech.hasLineOfSight(target);
-        if (aligned && scheduleAutomaticEquipment(mech, target, state, mech.level().getGameTime(),
-                ranged.isEmpty() ? null : ranged.get(0))) return true;
+        if (aligned && !PULSES.containsKey(mech.getUUID())) {
+            scheduleAutomaticEquipment(mech, target, state, now, ranged.isEmpty() ? null : ranged.get(0));
+        }
         short bits = 0;
         if (yawError < -2.0F) bits |= LEFT;
         else if (yawError > 2.0F) bits |= RIGHT;
@@ -985,7 +970,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (!ranged.isEmpty() && aligned) {
             bits |= ranged.get(0).bit();
         }
-        submit(mech, bits);
+        INPUT_BITS.put(mech.getUUID(), bits);
         ACTIVE.add(mech.getUUID());
         return true;
     }
@@ -1134,7 +1119,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void stopMovement(PomkotsVehicleBase mech) {
-        submit(mech, (short)0);
+        INPUT_BITS.put(mech.getUUID(), (short)0);
         ((MechControlBridge)mech).dominion$setControlFrame(new MechControlFrame(true, 0, 0, mech.getYRot(), 0));
         mech.setDeltaMovement(mech.getDeltaMovement().multiply(0.35D, 1.0D, 0.35D));
     }
@@ -1153,6 +1138,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
         }
         UUID id = vehicle.getUUID();
+        INPUT_BITS.remove(id);
         ACTIVE.remove(id); JUMPS.remove(id); cancelPulse(id, "control stopped"); COMBAT.remove(id);
         if (clearTasks) ROUTES.remove(id);
     }
@@ -1166,6 +1152,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void cleanup(UUID id) {
+        INPUT_BITS.remove(id);
         ACTIVE.remove(id); ROUTES.remove(id); JUMPS.remove(id); PULSES.remove(id); COMBAT.remove(id);
         AUTO_AUXILIARY_READY_TICKS.remove(id);
         SUWA_BURST_REMAINING_TICKS.remove(id);
@@ -1187,32 +1174,28 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
     private static final class PendingPulse {
         final short bits; int remainingTicks; final int ammoSlot; final int cooldownTicksAfter;
-        final boolean allowConcurrentPrimary, accumulatesFiringTime;
-        boolean waitingForReload; short concurrentPrimaryBits;
+        final boolean accumulatesFiringTime;
+        boolean waitingForReload;
         PendingPulse(short bits, int pressTicks) {
-            this(bits, pressTicks, -1, 0, false, false);
+            this(bits, pressTicks, -1, 0, false);
         }
         PendingPulse(short bits, int pressTicks, int ammoSlot, int cooldownTicksAfter,
-                     boolean waitingForReload, boolean allowConcurrentPrimary) {
+                     boolean waitingForReload) {
             this.bits = bits;
             this.remainingTicks = Math.max(1, pressTicks) + 1;
             this.ammoSlot = ammoSlot;
             this.cooldownTicksAfter = cooldownTicksAfter;
             this.waitingForReload = waitingForReload;
-            this.allowConcurrentPrimary = allowConcurrentPrimary;
-            this.accumulatesFiringTime = allowConcurrentPrimary;
+            this.accumulatesFiringTime = cooldownTicksAfter > 0;
         }
     }
     private static final class CombatState {
         UUID target;
         long nextPrimaryTick;
-        long nextOffhandTick;
-        long offhandUntilTick;
         long nextMeleeTick;
         long nextTraceTick;
         long lastWeaponDebugTick;
         long lastAttackTick;
-        int meleeCursor;
         int shoulderCursor;
     }
     private record WeaponSlot(short bit, int inventorySlot, String itemId,
