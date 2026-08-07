@@ -1,3 +1,7 @@
+# 1.7.20
+
+- Adds throttled weapon diagnostics to the server log for PMVC01 piloting: combat branch decisions, submitted driver-input bits, shoulder-equipment skip reasons and native weapon action/ammo state per slot.
+
 # 1.7.6
 
 - Replaces passenger navigation with the add-on's mech-footprint A* so a mounted NoAI pilot no longer produces an empty movement route.

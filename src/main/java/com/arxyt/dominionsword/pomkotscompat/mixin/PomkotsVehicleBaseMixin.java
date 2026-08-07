@@ -2,9 +2,12 @@ package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
+import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
+import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -52,6 +55,14 @@ public abstract class PomkotsVehicleBaseMixin implements MechControlBridge {
         dominion$lastAppliedDriverInput = dominion$queuedDriverInput;
         PomkotsVehicleBase mech = (PomkotsVehicleBase) (Object) this;
         mech.setDriverInput(new DriverInput(dominion$queuedDriverInput, mech.getDriverInput()));
+        if (mech.level() != null && !mech.level().isClientSide && mech.level().getGameTime() % 10L == 0L) {
+            LivingEntity driver = mech.getDrivingPassenger();
+            boolean dominionPilot = driver instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech);
+            DominionSwordPomkotsCompatMod.LOGGER.info(
+                    "[DS-POMKOTS-WEAPON] input mech={} bits={} last={} driver={} dominionPilot={}",
+                    mech.getUUID(), dominion$queuedDriverInput, dominion$lastAppliedDriverInput,
+                    driver == null ? "none" : driver.getType().toString(), dominionPilot);
+        }
     }
 
     @Inject(
