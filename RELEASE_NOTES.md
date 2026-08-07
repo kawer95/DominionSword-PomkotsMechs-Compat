@@ -1,3 +1,8 @@
+# 1.8.4
+
+- Restores PMVC01's original saber animation and effects completely.
+- Adds PMV01's pilebunker shockwave ring to the Kagenobu (景信) punch, which already uses the pilebunker motion, impact sound and spark particles.
+
 # 1.8.3
 
 - Swaps the saber animation content at resolution time: PMVC01's controller still requests its native w_saber names (a path that is guaranteed to resolve), and the pilebunker animation is substituted instead. This fixes the body continuing to play the old saber motion.
