@@ -309,7 +309,9 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
             // Shoulder ordnance keeps firing while the melee weapon presses; when the shoulders
             // are cooling, the charge hammer keeps its own cadence.
-            scheduleAutomaticEquipment(mech, target, state, now, null);
+            // In melee range only the shoulder gatling (suwa) keeps firing; grenade launchers
+            // and missiles must not be used point-blank.
+            scheduleAutomaticEquipment(mech, target, state, now, null, true);
             INPUT_BITS.put(mech.getUUID(), meleeBits);
             if (now % 10L == 0L) {
                 DominionSwordPomkotsCompatMod.LOGGER.info(
@@ -335,7 +337,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 aimAt(pilot, target.getBoundingBox().getCenter());
                 setFrame(mech, 0.0F, 0.0F, pilot.getYRot(), pilot.getXRot());
                 if (!PULSES.containsKey(mech.getUUID())) {
-                    scheduleAutomaticEquipment(mech, target, state, mech.level().getGameTime(), null);
+                    scheduleAutomaticEquipment(mech, target, state, mech.level().getGameTime(), null, false);
                 }
                 ACTIVE.add(mech.getUUID());
                 return true;
@@ -368,7 +370,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 if (ordnance == null) ordnance = w;
             }
         }
-        scheduleAutomaticEquipment(mech, target, state, now, main);
+        scheduleAutomaticEquipment(mech, target, state, now, main, false);
         if (ordnance != null && now >= state.nextPrimaryTick && !PULSES.containsKey(mech.getUUID())) {
             if (ordnance.multiLock() && mech instanceof Pmvc01Entity custom) {
                 prepareCustomMultiLock(custom, ordnance.inventorySlot(), target);
@@ -795,7 +797,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static boolean scheduleAutomaticEquipment(PomkotsVehicleBase mech, LivingEntity target,
-                                                       CombatState state, long now, WeaponSlot primary) {
+                                                       CombatState state, long now, WeaponSlot primary,
+                                                       boolean meleeGatlingOnly) {
         UUID mechId = mech.getUUID();
         if (now < AUTO_AUXILIARY_READY_TICKS.getOrDefault(mechId, 0L)) return false;
         String vehicle = vehicleId(mech);
@@ -822,6 +825,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             else if (GROUND_SKILL_WEAPONS.contains(id)) skipReason = "ground-skill";
             else if (MELEE_WEAPONS.contains(id)) skipReason = "melee";
             else if (primary != null && primary.inventorySlot() == slot) skipReason = "primary-slot";
+            else if (meleeGatlingOnly && !"suwa".equals(id)) skipReason = "not-gatling-in-melee";
             else if (!hasUsableAmmo(custom, slot)) skipReason = "no-usable-ammo";
             if (skipReason != null) {
                 if (now % 20L == 0L) {
@@ -969,7 +973,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         boolean aligned = Math.abs(yawError) <= 12.0F && Math.abs(pitchError) <= 12.0F
                 && mech.hasLineOfSight(target);
         if (aligned && !PULSES.containsKey(mech.getUUID())) {
-            scheduleAutomaticEquipment(mech, target, state, now, ranged.isEmpty() ? null : ranged.get(0));
+            scheduleAutomaticEquipment(mech, target, state, now, ranged.isEmpty() ? null : ranged.get(0), false);
         }
         short bits = 0;
         if (yawError < -2.0F) bits |= LEFT;
