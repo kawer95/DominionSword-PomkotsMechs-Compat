@@ -8,6 +8,7 @@ import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
+import com.arxyt.dominionsword.pomkotscompat.util.MeleeAabbFix;
 import grcmcs.minecraft.mods.pomkotsmechs.PomkotsMechs;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import grcmcs.minecraft.mods.pomkotsmechs.items.parts.weapons.TakaoItem;
@@ -110,7 +111,10 @@ public abstract class TakaoGroundBreakEffectsMixin {
                 .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
         Vec3 pilePos2 = new Vec3(-6.5 * mech.isRight(), -4F, -4F)
                 .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
-        AABB box = new AABB(pilePos1, pilePos2);
+        AABB oldBox = new AABB(pilePos1, pilePos2);
+        double r = mech.isRight();
+        AABB box = MeleeAabbFix.rotatedBox(mech.position(), mech.getYRot(),
+                new double[]{6.5 * r, -6.5 * r}, new double[]{4.0, -4.0}, new double[]{18.0, -4.0});
         List<Entity> entities = level.getEntities(null, box);
         StringBuilder living = new StringBuilder();
         for (Entity entity : entities) {
@@ -125,11 +129,14 @@ public abstract class TakaoGroundBreakEffectsMixin {
             }
         }
         DominionSwordPomkotsCompatMod.LOGGER.info(
-                "[DS-POMKOTS-TAKAO] fireAOE mech={} box=[{},{},{} -> {},{},{}] entities={} living=[{}]",
+                "[DS-POMKOTS-TAKAO] fireAOE mech={} fixed=[{},{},{} -> {},{},{}] old=[{},{},{} -> {},{},{}] entities={} living=[{}]",
                 mech.getMechEntity() == null ? "?" : mech.getMechEntity().getUUID(),
                 String.format(Locale.ROOT, "%.1f", box.minX), String.format(Locale.ROOT, "%.1f", box.minY),
                 String.format(Locale.ROOT, "%.1f", box.minZ), String.format(Locale.ROOT, "%.1f", box.maxX),
                 String.format(Locale.ROOT, "%.1f", box.maxY), String.format(Locale.ROOT, "%.1f", box.maxZ),
+                String.format(Locale.ROOT, "%.1f", oldBox.minX), String.format(Locale.ROOT, "%.1f", oldBox.minY),
+                String.format(Locale.ROOT, "%.1f", oldBox.minZ), String.format(Locale.ROOT, "%.1f", oldBox.maxX),
+                String.format(Locale.ROOT, "%.1f", oldBox.maxY), String.format(Locale.ROOT, "%.1f", oldBox.maxZ),
                 entities.size(), living);
     }
 

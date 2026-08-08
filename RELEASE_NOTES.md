@@ -1,3 +1,7 @@
+# 1.8.25
+
+- Fixes the melee AOE damage box for all melee weapons (Takao, Tsurugi, Kagenobu, Tenpou, Jinba, Gassan, Mitake). The native code built the damage box from two opposite corners of the rotated swing volume, which collapsed into a thin sliver whenever the mech was not facing exactly along an axis, so swings could animate while dealing no knockback and no damage. The full rotated bounding box is now used.
+
 # 1.8.24
 
 - During melee combat only the shoulder gatling (suwa) fires alongside the hand melee weapon; shoulder grenade launchers and missiles no longer trigger at point-blank range.
