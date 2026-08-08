@@ -49,4 +49,5 @@ public final class MeleeAabbFix {
         return new AABB(pos.x + minX, pos.y + minY, pos.z + minZ,
                 pos.x + maxX, pos.y + maxY, pos.z + maxZ);
     }
+
 }

@@ -33,7 +33,9 @@ minecraft {
 
 repositories {
     mavenCentral()
-    if (project.hasProperty('runtime_test_dir')) flatDir { dirs file(project.property('runtime_test_dir')) }
+    if (project.hasProperty('runtime_test_dir')) flatDir {
+        dirs file(project.property('runtime_test_dir')), file(project.property('dominionsword_jar')).parentFile
+    }
 }
 
 dependencies {
@@ -46,7 +48,12 @@ dependencies {
     compileOnly files(project.property('pomkots_jar'))
     compileOnly files(project.property('geckolib_jar'))
     if (project.hasProperty('runtime_test_dir')) {
-        runtimeOnly fg.deobf('local:dominionsword:1.22.0')
+        def dominionJarName = file(project.property('dominionsword_jar')).name
+        if (!dominionJarName.startsWith('dominionsword-') || !dominionJarName.endsWith('.jar')) {
+            throw new GradleException('dominionsword_jar must be named dominionsword-<version>.jar for runtime tests')
+        }
+        def dominionRuntimeVersion = dominionJarName.substring('dominionsword-'.length(), dominionJarName.length() - '.jar'.length())
+        runtimeOnly fg.deobf("local:dominionsword:${dominionRuntimeVersion}")
         runtimeOnly fg.deobf('local:pomkotsmechs-forge:0.0.1-alpha.8')
         runtimeOnly fg.deobf('local:geckolib-forge-1.20.1:4.8.4')
         runtimeOnly fg.deobf('local:architectury-forge:9.2.14')

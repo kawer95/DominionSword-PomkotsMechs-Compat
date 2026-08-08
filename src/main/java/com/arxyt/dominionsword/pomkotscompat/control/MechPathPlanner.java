@@ -162,6 +162,7 @@ public final class MechPathPlanner {
     }
 
     private static Integer findStandY(ServerLevel level, Entity vehicle, double x, double z, int baseY, int range) {
+        if (!level.hasChunkAt(BlockPos.containing(x, baseY, z))) return null;
         for (int delta : offsetOrder(range)) {
             int y = baseY + delta;
             AABB box = placementBox(vehicle, x, y, z).deflate(0.04D);
@@ -183,6 +184,7 @@ public final class MechPathPlanner {
         int supported = 0;
         for (double[] offset : new double[][]{{0,0},{hx,hz},{hx,-hz},{-hx,hz},{-hx,-hz}}) {
             BlockPos below = BlockPos.containing(x + offset[0], y - 0.12D, z + offset[1]);
+            if (!level.hasChunkAt(below)) return false;
             BlockState state = level.getBlockState(below);
             if (!state.getFluidState().isEmpty()) return false;
             if (!state.getCollisionShape(level, below).isEmpty()) supported++;

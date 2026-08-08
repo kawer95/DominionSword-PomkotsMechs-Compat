@@ -1,10 +1,12 @@
 package com.arxyt.dominionsword.pomkotscompat.mixin;
 
+import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.projectile.BulletEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.projectile.PomkotsThrowableProjectile;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,8 +28,10 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
     @Inject(method = {"tick()V", "m_8119_()V"}, at = @At("HEAD"), remap = false)
     private void dominion$scanFullIntendedBulletStep(CallbackInfo ci) {
         LivingEntity source = getShooter();
+        PomkotsVehicleBase mech = dominion$controlledMech(source);
+        if (mech == null) return;
         if (getOwner() == null && source != null) {
-            Entity owner = source instanceof PomkotsVehicleBase mech && mech.getDrivingPassenger() != null
+            Entity owner = source instanceof PomkotsVehicleBase && mech.getDrivingPassenger() != null
                     ? mech.getDrivingPassenger() : source;
             setOwner(owner);
         }
@@ -43,6 +47,7 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
                     shift = At.Shift.AFTER, remap = false)
     }, cancellable = true, remap = false)
     private void dominion$removeUncheckedSecondMove(CallbackInfo ci) {
+        if (dominion$controlledMech(getOwner()) == null && dominion$controlledMech(getShooter()) == null) return;
         Vec3 velocity = getDeltaMovement();
         setDeltaMovement(velocity.scale(0.5D));
         if (lifeTicks++ >= 30) discard();
@@ -52,6 +57,15 @@ public abstract class PomkotsBulletEntityMixin extends PomkotsThrowableProjectil
     @Inject(method = {"onHitEntity(Lnet/minecraft/world/phys/EntityHitResult;)V",
             "m_5790_(Lnet/minecraft/world/phys/EntityHitResult;)V"}, at = @At("HEAD"), remap = false)
     private void dominion$clearInvulnerabilityBeforeDamage(EntityHitResult hit, CallbackInfo ci) {
+        if (dominion$controlledMech(getOwner()) == null && dominion$controlledMech(getShooter()) == null) return;
         hit.getEntity().invulnerableTime = 0;
+    }
+
+    private static PomkotsVehicleBase dominion$controlledMech(Entity source) {
+        PomkotsVehicleBase mech = source instanceof PomkotsVehicleBase vehicle ? vehicle
+                : source != null && source.getVehicle() instanceof PomkotsVehicleBase vehicle ? vehicle : null;
+        if (mech == null || !(mech.getDrivingPassenger() instanceof Mob pilot)
+                || !PomkotsPilotState.belongsTo(pilot, mech)) return null;
+        return mech;
     }
 }

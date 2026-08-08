@@ -4,6 +4,7 @@ import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -15,10 +16,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Mth;
+import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 import net.minecraftforge.network.NetworkHooks;
 
 /** A debris block flung outward and upward by the Takao hammer impact (the block splash). */
-public class RisingBlockEntity extends Entity {
+public class RisingBlockEntity extends Entity implements IEntityAdditionalSpawnData {
     private static final EntityDataAccessor<BlockState> BLOCK_STATE =
             SynchedEntityData.defineId(RisingBlockEntity.class, EntityDataSerializers.BLOCK_STATE);
     private static final String TAG_BLOCK_STATE = "BlockState";
@@ -27,6 +30,7 @@ public class RisingBlockEntity extends Entity {
     private static final String TAG_SPIN_Y = "SpinY";
     private static final String TAG_SPIN_Z = "SpinZ";
     private static final int DEFAULT_LIFE = 26;
+    private static final int MAX_LIFE = 200;
     private static final double GRAVITY = 0.13D;
     private static final double DRAG = 0.96D;
 
@@ -44,7 +48,7 @@ public class RisingBlockEntity extends Entity {
         this(PomkotsEntities.RISING_BLOCK.get(), level);
         this.setPos(x, y, z);
         this.setBlockState(blockState);
-        this.life = life;
+        this.life = Mth.clamp(life, 1, MAX_LIFE);
         this.setDeltaMovement(velocity);
         this.spinX = (level.random.nextFloat() - 0.5F) * 24.0F;
         this.spinY = (level.random.nextFloat() - 0.5F) * 36.0F;
@@ -80,7 +84,7 @@ public class RisingBlockEntity extends Entity {
     protected void readAdditionalSaveData(CompoundTag tag) {
         this.setBlockState(NbtUtils.readBlockState(
                 this.level().holderLookup(Registries.BLOCK), tag.getCompound(TAG_BLOCK_STATE)));
-        this.life = tag.getInt(TAG_LIFE);
+        this.life = tag.contains(TAG_LIFE) ? Mth.clamp(tag.getInt(TAG_LIFE), 1, MAX_LIFE) : DEFAULT_LIFE;
         this.spinX = tag.getFloat(TAG_SPIN_X);
         this.spinY = tag.getFloat(TAG_SPIN_Y);
         this.spinZ = tag.getFloat(TAG_SPIN_Z);
@@ -98,5 +102,25 @@ public class RisingBlockEntity extends Entity {
     @Override
     public Packet<ClientGamePacketListener> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    @Override
+    public void writeSpawnData(FriendlyByteBuf buffer) {
+        buffer.writeVarInt(this.life);
+        buffer.writeFloat(this.spinX);
+        buffer.writeFloat(this.spinY);
+        buffer.writeFloat(this.spinZ);
+    }
+
+    @Override
+    public void readSpawnData(FriendlyByteBuf buffer) {
+        this.life = Mth.clamp(buffer.readVarInt(), 1, MAX_LIFE);
+        this.spinX = finiteOrZero(buffer.readFloat());
+        this.spinY = finiteOrZero(buffer.readFloat());
+        this.spinZ = finiteOrZero(buffer.readFloat());
+    }
+
+    private static float finiteOrZero(float value) {
+        return Float.isFinite(value) ? value : 0.0F;
     }
 }

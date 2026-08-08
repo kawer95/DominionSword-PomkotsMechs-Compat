@@ -161,15 +161,23 @@ public class GroundCrackBlockEntity extends Entity {
     }
 
     public void setDuration(int duration) {
-        this.entityData.set(DURATION, duration);
+        this.entityData.set(DURATION, Mth.clamp(duration, 1, MAX_ACTIVE - RISE_TICKS - RECOVER_TICKS));
     }
 
     @Override
     protected void readAdditionalSaveData(CompoundTag compoundTag) {
         this.setBlockState(NbtUtils.readBlockState(
                 this.level().holderLookup(Registries.BLOCK), compoundTag.getCompound("block_state")));
-        this.setDuration(compoundTag.getInt("duration"));
-        this.setAnimVY(compoundTag.getFloat("vy"));
+        this.setDuration(compoundTag.contains("duration") ? compoundTag.getInt("duration") : 20);
+        float vy = compoundTag.getFloat("vy");
+        this.setAnimVY(Float.isFinite(vy) ? vy : 1.0F);
+        float qx = compoundTag.getFloat("rotation_x");
+        float qy = compoundTag.getFloat("rotation_y");
+        float qz = compoundTag.getFloat("rotation_z");
+        float qw = compoundTag.contains("rotation_w") ? compoundTag.getFloat("rotation_w") : 1.0F;
+        if (Float.isFinite(qx) && Float.isFinite(qy) && Float.isFinite(qz) && Float.isFinite(qw)) {
+            this.setQuaternionf(new Quaternionf(qx, qy, qz, qw).normalize());
+        }
     }
 
     @Override
@@ -177,6 +185,11 @@ public class GroundCrackBlockEntity extends Entity {
         compoundTag.put("block_state", NbtUtils.writeBlockState(this.getBlockState()));
         compoundTag.putInt("duration", this.getDuration());
         compoundTag.putFloat("vy", this.getAnimVY());
+        Quaternionf rotation = this.getQuaternionf();
+        compoundTag.putFloat("rotation_x", rotation.x);
+        compoundTag.putFloat("rotation_y", rotation.y);
+        compoundTag.putFloat("rotation_z", rotation.z);
+        compoundTag.putFloat("rotation_w", rotation.w);
     }
 
     @Override

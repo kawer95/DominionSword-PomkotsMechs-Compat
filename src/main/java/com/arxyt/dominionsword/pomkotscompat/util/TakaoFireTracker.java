@@ -27,4 +27,8 @@ public final class TakaoFireTracker {
     public static void remove(UUID mechId) {
         LAST_FIRE_TICK.remove(mechId);
     }
+
+    public static void clear() {
+        LAST_FIRE_TICK.clear();
+    }
 }

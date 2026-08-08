@@ -4,14 +4,14 @@ Forge 1.20.1 compatibility add-on that lets Dominion Sword-controlled units boar
 
 ## Requirements
 
-- Dominion Sword 1.22.0 or newer
+- Dominion Sword 1.26.3 or newer
 - Pomkots Mechs 0.0.1-alpha.8
-- GBF 1.0.1 or newer, plus the other dependencies required by Pomkots Mechs alpha.8
+- GBF 1.0.2 or newer, plus the other dependencies required by Pomkots Mechs alpha.8
 - Forge 47.x for Minecraft 1.20.1
 
 ## Licensing
 
-This compatibility add-on is released under the MIT License. Pomkots Mechs is a separate project by grc_mcs and is not bundled or redistributed here. The add-on does not include Pomkots sound effects, music, models, textures, or compiled mod JARs.
+This compatibility add-on is released under the GNU Lesser General Public License v3.0 (LGPL-3.0); see `LICENSE` and `NOTICE`. Pomkots Mechs is a separate project by grc_mcs and is not bundled or redistributed here. The add-on does not include Pomkots sound effects, music, models, textures, or compiled mod JARs.
 
 Compatibility add-on development was explicitly approved by the Pomkots Mechs author. Users must obtain Pomkots Mechs from its official distribution channel.
 
@@ -36,4 +36,4 @@ PMV03P exposes an instant command-mode skill for switching between its native al
 
 Combat orders select close-range or ranged positioning from the installed weapon set. Fixed-mech missile systems and PMVC01 Suwa, Kawasemi and Tsubame shoulder weapons are used periodically; PMV03P also uses its horizontal missile in both flight and ground combat. PMVC01 engineering tools are never selected automatically. Dodo, Nosuri and Mukudori launchers appear as point-targeted ground strike skills when equipped.
 
-Weapon terrain damage is controlled by Pomkots Mechs' own `enablePlayerVehicleBlockDestruction` setting. Set it to `false` in the Pomkots Mechs configuration to prevent weapon explosions from breaking blocks, including when the pilot is a Dominion Sword unit.
+Weapon terrain damage is controlled by Dominion Sword's `pomkotsDisableWeaponBlockDestruction` server setting. When enabled, Pomkots weapon explosions and direct weapon block edits are suppressed while the four PMVC01 engineering tools remain usable.

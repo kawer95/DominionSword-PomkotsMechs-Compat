@@ -8,7 +8,6 @@ import com.arxyt.dominionsword.pomkotscompat.DominionSwordPomkotsCompatMod;
 import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
-import com.arxyt.dominionsword.pomkotscompat.util.MeleeAabbFix;
 import com.arxyt.dominionsword.pomkotscompat.util.TakaoFireTracker;
 import grcmcs.minecraft.mods.pomkotsmechs.PomkotsMechs;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
@@ -19,11 +18,8 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
@@ -33,8 +29,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.reflect.Field;
-import java.util.List;
-import java.util.Locale;
 
 /**
  * Adds two independent ground effects to the Takao (大锤) charge hammer impact:
@@ -43,6 +37,10 @@ import java.util.Locale;
  */
 @Mixin(TakaoItem.class)
 public abstract class TakaoGroundBreakEffectsMixin {
+    @Unique
+    private static final int DOMINION$MAX_SPLASH_BLOCKS = 64;
+    @Unique
+    private static final int DOMINION$MAX_CRACK_BLOCKS = 96;
     @Unique
     private static SimpleParticleType dominion$sparkYellow;
     @Unique
@@ -56,10 +54,6 @@ public abstract class TakaoGroundBreakEffectsMixin {
     private void dominion$spawnGroundBreak(ActionWeapon.WeaponMechInterface mechInterface, int tick, boolean isOnFire,
                                            CallbackInfo ci) {
         try {
-            DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-TAKAO] weaponTick mech={} tick={} onFire={}",
-                    mechInterface.getMechEntity() == null ? "?" : mechInterface.getMechEntity().getUUID(),
-                    tick, isOnFire);
             if (!isOnFire) return;
             Level world = mechInterface.getWorld();
             if (!(world instanceof ServerLevel serverLevel)) return;
@@ -70,6 +64,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
             float scale = tick > 60 ? 1.6F : tick > 40 ? 1.25F : 1.0F;
             Vec3 forward = new Vec3(0.0D, 0.0D, 5.0D).yRot((float) Math.toRadians(-mechInterface.getYRot()));
             BlockPos base = BlockPos.containing(mechInterface.position().add(forward));
+            if (!serverLevel.hasChunkAt(base)) return;
             int groundY = dominion$findGroundY(serverLevel, base.getX(), base.getZ(), base.getY());
             Vec3 center = new Vec3(base.getX() + 0.5D, groundY + 1.0D, base.getZ() + 0.5D);
             BlockState ground = serverLevel.getBlockState(new BlockPos(base.getX(), groundY, base.getZ()));
@@ -96,52 +91,9 @@ public abstract class TakaoGroundBreakEffectsMixin {
             // Two separate effects: flying debris splash + ground crack that recovers.
             dominion$spawnSplashBlocks(serverLevel, center, scale);
             dominion$spawnCrackBlocks(serverLevel, center, scale);
-            dominion$debugDumpAoe(serverLevel, mechInterface);
-            DominionSwordPomkotsCompatMod.LOGGER.info(
-                    "[DS-POMKOTS-TAKAO] effects spawned mech={} center=({},{},{})",
-                    mechInterface.getMechEntity() == null ? "?" : mechInterface.getMechEntity().getUUID(),
-                    String.format(Locale.ROOT, "%.2f", center.x),
-                    String.format(Locale.ROOT, "%.2f", center.y),
-                    String.format(Locale.ROOT, "%.2f", center.z));
         } catch (RuntimeException ex) {
             DominionSwordPomkotsCompatMod.LOGGER.warn("[DS-POMKOTS-WEAPON] takao ground break spawn failed", ex);
         }
-    }
-
-    /** Dumps the same AOE box the native Takao damage loop checks, and the living targets inside it. */
-    @Unique
-    private static void dominion$debugDumpAoe(ServerLevel level, ActionWeapon.WeaponMechInterface mech) {
-        Vec3 pilePos1 = new Vec3(6.5 * mech.isRight(), 4.0F, 18F)
-                .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
-        Vec3 pilePos2 = new Vec3(-6.5 * mech.isRight(), -4F, -4F)
-                .yRot((float) Math.toRadians(-mech.getYRot())).add(mech.position());
-        AABB oldBox = new AABB(pilePos1, pilePos2);
-        double r = mech.isRight();
-        AABB box = MeleeAabbFix.rotatedBox(mech.position(), mech.getYRot(),
-                new double[]{6.5 * r, -6.5 * r}, new double[]{4.0, -4.0}, new double[]{18.0, -4.0});
-        List<Entity> entities = level.getEntities(null, box);
-        StringBuilder living = new StringBuilder();
-        for (Entity entity : entities) {
-            if (entity instanceof LivingEntity le) {
-                if (living.length() > 0) living.append(" | ");
-                living.append(entity.getType().getDescription().getString())
-                        .append('#')
-                        .append(entity.getUUID().toString().substring(0, 8))
-                        .append(" hp=").append(String.format(Locale.ROOT, "%.1f", le.getHealth()))
-                        .append(" d=").append(String.format(Locale.ROOT, "%.1f",
-                                Math.sqrt(entity.distanceToSqr(mech.position()))));
-            }
-        }
-        DominionSwordPomkotsCompatMod.LOGGER.info(
-                "[DS-POMKOTS-TAKAO] fireAOE mech={} fixed=[{},{},{} -> {},{},{}] old=[{},{},{} -> {},{},{}] entities={} living=[{}]",
-                mech.getMechEntity() == null ? "?" : mech.getMechEntity().getUUID(),
-                String.format(Locale.ROOT, "%.1f", box.minX), String.format(Locale.ROOT, "%.1f", box.minY),
-                String.format(Locale.ROOT, "%.1f", box.minZ), String.format(Locale.ROOT, "%.1f", box.maxX),
-                String.format(Locale.ROOT, "%.1f", box.maxY), String.format(Locale.ROOT, "%.1f", box.maxZ),
-                String.format(Locale.ROOT, "%.1f", oldBox.minX), String.format(Locale.ROOT, "%.1f", oldBox.minY),
-                String.format(Locale.ROOT, "%.1f", oldBox.minZ), String.format(Locale.ROOT, "%.1f", oldBox.maxX),
-                String.format(Locale.ROOT, "%.1f", oldBox.maxY), String.format(Locale.ROOT, "%.1f", oldBox.maxZ),
-                entities.size(), living);
     }
 
     /** Large splashing spark burst at the impact point, using Pomkots Mechs' native SPARK particles. */
@@ -198,6 +150,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
         int minZ = Mth.floor(center.z - radius);
         int maxZ = Mth.ceil(center.z + radius);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        int spawned = 0;
 
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
@@ -211,6 +164,8 @@ public abstract class TakaoGroundBreakEffectsMixin {
                     continue;
                 }
 
+                mutable.set(x, Mth.floor(center.y), z);
+                if (!level.hasChunkAt(mutable)) continue;
                 int y = dominion$findGroundY(level, x, z, Mth.floor(center.y));
                 mutable.set(x, y, z);
                 BlockState blockState = level.getBlockState(mutable);
@@ -223,9 +178,10 @@ public abstract class TakaoGroundBreakEffectsMixin {
                         + level.random.nextDouble() * 0.28D, 0.55D, 1.2D);
                 Vec3 velocity = new Vec3(dx / outward * 0.12D, bounce, dz / outward * 0.12D);
                 int life = 22 + level.random.nextInt(14) + Mth.floor(distance * 2.0D);
+                if (spawned >= DOMINION$MAX_SPLASH_BLOCKS) return;
                 RisingBlockEntity risingBlock = new RisingBlockEntity(
                         level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, life, velocity);
-                level.addFreshEntity(risingBlock);
+                if (level.addFreshEntity(risingBlock)) spawned++;
             }
         }
     }
@@ -239,6 +195,7 @@ public abstract class TakaoGroundBreakEffectsMixin {
         int minZ = Mth.floor(center.z - radius);
         int maxZ = Mth.ceil(center.z + radius);
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        int spawned = 0;
 
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
@@ -249,6 +206,8 @@ public abstract class TakaoGroundBreakEffectsMixin {
                     continue;
                 }
 
+                mutable.set(x, Mth.floor(center.y), z);
+                if (!level.hasChunkAt(mutable)) continue;
                 int y = dominion$findGroundY(level, x, z, Mth.floor(center.y));
                 mutable.set(x, y, z);
                 BlockState blockState = level.getBlockState(mutable);
@@ -272,9 +231,10 @@ public abstract class TakaoGroundBreakEffectsMixin {
                         (float) Math.toRadians(level.random.nextFloat() * 12.0F - 6.0F)));
                 float bounce = 0.05F + (float) (distance * bounceExponent);
                 int life = 24 + level.random.nextInt(18);
+                if (spawned >= DOMINION$MAX_CRACK_BLOCKS) return;
                 GroundCrackBlockEntity crackBlock = new GroundCrackBlockEntity(
                         level, x + 0.5D, y + 1.0D, z + 0.5D, blockState, rotation, life, bounce);
-                level.addFreshEntity(crackBlock);
+                if (level.addFreshEntity(crackBlock)) spawned++;
             }
         }
     }

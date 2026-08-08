@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.StackWalker;
-import java.util.List;
 
 /** Blocks direct weapon terrain edits while preserving PMVC engineering equipment. */
 @Mixin(Utils.class)
@@ -22,11 +21,10 @@ public abstract class PomkotsBlockDestructionMixin {
     private static void dominion$protectTerrainFromWeapons(Level level, BlockPos blockPos, boolean dropItem,
                                                            CallbackInfo ci) {
         if (!ServerConfig.POMKOTS_DISABLE_WEAPON_BLOCK_DESTRUCTION.get()) return;
-        List<String> callers = DOMINION$STACK_WALKER.walk(stream ->
-                stream.limit(20).map(StackWalker.StackFrame::getClassName).toList());
-        boolean engineering = callers.stream().anyMatch(name ->
-                name.endsWith(".AmagiItem") || name.endsWith(".DaigomaruItem")
-                        || name.endsWith(".ShoutouItem") || name.endsWith(".WadaItem"));
+        boolean engineering = DOMINION$STACK_WALKER.walk(stream -> stream.limit(20)
+                .map(StackWalker.StackFrame::getClassName)
+                .anyMatch(name -> name.endsWith(".AmagiItem") || name.endsWith(".DaigomaruItem")
+                        || name.endsWith(".ShoutouItem") || name.endsWith(".WadaItem")));
         if (engineering) return;
         // Alpha.8 routes weapon, projectile, fixed-mech and boss terrain damage through this
         // helper.  Cancelling the shared helper is deliberately more complete than maintaining

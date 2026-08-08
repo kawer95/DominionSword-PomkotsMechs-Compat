@@ -10,7 +10,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.level.ExplosionEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -34,6 +36,8 @@ public final class DominionSwordPomkotsCompatMod {
         DominionSkills.register(adapter);
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(this::onExplosionDetonate);
+        MinecraftForge.EVENT_BUS.addListener(this::onEntityJoinLevel);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStopped);
         LOGGER.info("[DominionSword Pomkots Compat] Pomkots mech skill and vehicle bridge enabled");
     }
 
@@ -49,5 +53,13 @@ public final class DominionSwordPomkotsCompatMod {
         if (key != null && "pomkotsmechs".equals(key.getNamespace())) {
             event.getAffectedBlocks().clear();
         }
+    }
+
+    private void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        if (adapter.restoreGroundMarker(event.getEntity())) event.setCanceled(true);
+    }
+
+    private void onServerStopped(ServerStoppedEvent event) {
+        adapter.clearAll(event.getServer());
     }
 }
