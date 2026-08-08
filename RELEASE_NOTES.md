@@ -1,3 +1,7 @@
+# 1.8.26
+
+- Verifies every Takao charge release actually produced its native fire tick. If a released swing was skipped (native single-tick fire check missed due to an action reset or tick drift), the add-on resets the stuck weapon action and restarts the charge cycle instead of leaving the mech charging forever.
+
 # 1.8.25
 
 - Fixes the melee AOE damage box for all melee weapons (Takao, Tsurugi, Kagenobu, Tenpou, Jinba, Gassan, Mitake). The native code built the damage box from two opposite corners of the rotated swing volume, which collapsed into a thin sliver whenever the mech was not facing exactly along an axis, so swings could animate while dealing no knockback and no damage. The full rotated bounding box is now used.

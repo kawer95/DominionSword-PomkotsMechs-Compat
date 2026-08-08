@@ -9,10 +9,13 @@ import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
 import com.arxyt.dominionsword.pomkotscompat.control.MechPathPlanner;
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
+import com.arxyt.dominionsword.pomkotscompat.util.TakaoFireTracker;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.Pmv03pEntity;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.PomkotsVehicleBase;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
+import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.Action;
+import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -296,6 +299,28 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             // The charge hammer presses for a fixed window and releases so its native charge
             // fires, on its own cadence that is independent of shoulder-ordnance pulses.
             if (chargeWeapon != null) {
+                if (now == state.takaoPressEndTick && now < state.nextTakaoPressTick) {
+                    state.takaoReleaseTick = now;
+                }
+                if (now >= state.nextTakaoPressTick && state.takaoReleaseTick > 0
+                        && TakaoFireTracker.lastFireTick(mech.getUUID()) < state.takaoReleaseTick + 4L) {
+                    // The released charge never produced its native fire tick (action reset or
+                    // tick drift). Reset the stuck weapon action so the next press can restart it.
+                    DominionSwordPomkotsCompatMod.LOGGER.warn(
+                            "[DS-POMKOTS-TAKAO] missed fire mech={} release={} lastFire={}; resetting stuck charge",
+                            mech.getUUID(), state.takaoReleaseTick,
+                            TakaoFireTracker.lastFireTick(mech.getUUID()));
+                    if (mech instanceof Pmvc01Entity custom) {
+                        for (Action action : custom.actionController.getAllActions()) {
+                            if (action instanceof ActionWeapon weaponAction
+                                    && weaponAction.getWeaponItemSlot() == chargeWeapon.inventorySlot()
+                                    && action.isInAction()) {
+                                action.reset();
+                                break;
+                            }
+                        }
+                    }
+                }
                 if (now < state.takaoPressEndTick || now >= state.nextTakaoPressTick) {
                     meleeBits |= chargeWeapon.bit();
                 }
@@ -1158,6 +1183,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
         }
         UUID id = vehicle.getUUID();
+        TakaoFireTracker.remove(id);
         INPUT_BITS.remove(id);
         ACTIVE.remove(id); JUMPS.remove(id); cancelPulse(id, "control stopped"); COMBAT.remove(id);
         if (clearTasks) ROUTES.remove(id);
@@ -1214,6 +1240,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         long nextPrimaryTick;
         long takaoPressEndTick;
         long nextTakaoPressTick;
+        long takaoReleaseTick = -1L;
         long nextTraceTick;
         long lastWeaponDebugTick;
         long lastAttackTick;

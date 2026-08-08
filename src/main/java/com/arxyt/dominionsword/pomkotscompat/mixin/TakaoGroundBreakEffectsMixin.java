@@ -9,6 +9,7 @@ import com.arxyt.dominionsword.pomkotscompat.entity.GroundCrackBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.entity.RisingBlockEntity;
 import com.arxyt.dominionsword.pomkotscompat.registry.PomkotsEntities;
 import com.arxyt.dominionsword.pomkotscompat.util.MeleeAabbFix;
+import com.arxyt.dominionsword.pomkotscompat.util.TakaoFireTracker;
 import grcmcs.minecraft.mods.pomkotsmechs.PomkotsMechs;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.equipment.action.custom.ActionWeapon;
 import grcmcs.minecraft.mods.pomkotsmechs.items.parts.weapons.TakaoItem;
@@ -62,6 +63,9 @@ public abstract class TakaoGroundBreakEffectsMixin {
             if (!isOnFire) return;
             Level world = mechInterface.getWorld();
             if (!(world instanceof ServerLevel serverLevel)) return;
+            if (mechInterface.getMechEntity() != null) {
+                TakaoFireTracker.markFire(mechInterface.getMechEntity().getUUID(), serverLevel.getGameTime());
+            }
 
             float scale = tick > 60 ? 1.6F : tick > 40 ? 1.25F : 1.0F;
             Vec3 forward = new Vec3(0.0D, 0.0D, 5.0D).yRot((float) Math.toRadians(-mechInterface.getYRot()));
