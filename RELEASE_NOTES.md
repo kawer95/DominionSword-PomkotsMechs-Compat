@@ -1,3 +1,7 @@
+# 1.8.27
+
+- Fixes a startup crash introduced in 1.8.25/1.8.26: the melee AABB fix redirected the vanilla `AABB` constructor, which Mixin 0.8.5 rejects when the constructed box is stored into a local (Mitake). The fix now redirects the `Level.getEntities` call instead and substitutes the full rotated bounding box there, which is legal for every weapon.
+
 # 1.8.26
 
 - Verifies every Takao charge release actually produced its native fire tick. If a released swing was skipped (native single-tick fire check missed due to an action reset or tick drift), the add-on resets the stuck weapon action and restarts the charge cycle instead of leaving the mech charging forever.
