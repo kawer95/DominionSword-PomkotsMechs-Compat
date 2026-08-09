@@ -118,6 +118,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     @Override
+    public boolean defersMoveCompletion(Entity vehicle, Vec3 goal) {
+        return vehicle != null && JUMPS.containsKey(vehicle.getUUID());
+    }
+
+    @Override
     public boolean select(ServerPlayer player, Entity vehicle) {
         LivingEntity driver = driver(vehicle);
         if (player == null || !(driver instanceof Mob mob) || driver instanceof Player
@@ -670,11 +675,15 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void finishJump(PomkotsVehicleBase mech) {
+        // Update the command marker while the jump still defers ordinary arrival handling, then
+        // clear only the persistent move task. Calling the normal release path here restores the
+        // pilot's native AI and can make the mech wander immediately after landing.
+        settleJumpCommandAtActualLanding(mech);
+        PlayerControl.completeRedirectedVehicleMove(mech);
         JUMPS.remove(mech.getUUID());
         mech.setNoGravity(false);
         mech.setDeltaMovement(Vec3.ZERO);
         mech.fallDistance = 0.0F;
-        settleJumpCommandAtActualLanding(mech);
         stopMovement(mech);
     }
 
