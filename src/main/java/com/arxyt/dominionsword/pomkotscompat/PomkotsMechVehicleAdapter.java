@@ -120,13 +120,24 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override
     public boolean select(ServerPlayer player, Entity vehicle) {
         LivingEntity driver = driver(vehicle);
-        return player != null && driver instanceof Mob && !(driver instanceof Player)
-                && (player.getUUID().equals(PlayerControl.controller(driver)) || FactionAccess.canControl(player, driver));
+        if (player == null || !(driver instanceof Mob mob) || driver instanceof Player
+                || !player.getUUID().equals(PlayerControl.controller(driver)) && !FactionAccess.canControl(player, driver)) {
+            return false;
+        }
+        // Other land-vehicle adapters select/prepare their Mob driver when the vehicle is
+        // selected. Do the same for mechs, including a unit that boarded through Pomkots' own
+        // interaction instead of Dominion's seat menu, so the native pilot controller cannot
+        // overwrite Dominion's queued movement and weapon input.
+        ensureGroundMode(vehicle);
+        PomkotsPilotState.begin(mob, vehicle);
+        return true;
     }
 
     @Override
     public boolean release(ServerPlayer player, Entity vehicle) {
         stop(vehicle, true);
+        LivingEntity driver = driver(vehicle);
+        if (driver instanceof Mob mob) PomkotsPilotState.restore(mob);
         return true;
     }
 
@@ -496,10 +507,12 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 continue;
             }
             LivingEntity pilot = mech.getDrivingPassenger();
+            if (pilot == null) pilot = driver(mech);
             if (!(pilot instanceof Mob) || pilot instanceof Player) {
                 stop(mech, true);
                 continue;
             }
+            PomkotsPilotState.begin((Mob) pilot, mech);
             CombatState combat = COMBAT.get(id);
             if (combat != null) {
                 Entity combatTarget = find(server, combat.target);
@@ -1037,7 +1050,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static LivingEntity driver(Entity vehicle) {
-        return vehicle instanceof PomkotsVehicleBase mech ? mech.getDrivingPassenger() : null;
+        if (!(vehicle instanceof PomkotsVehicleBase mech)) return null;
+        LivingEntity nativeDriver = mech.getDrivingPassenger();
+        if (nativeDriver != null && nativeDriver.isAlive()) return nativeDriver;
+        // Pomkots can expose the passenger relationship one tick before its specialised
+        // driving-passenger accessor catches up. The mech has one driver seat, so the first
+        // live living passenger is the same safe fallback used by ordinary land vehicles.
+        for (Entity passenger : mech.getPassengers()) {
+            if (passenger instanceof LivingEntity living && living.isAlive()) return living;
+        }
+        return null;
     }
 
     private static void aimAt(LivingEntity pilot, Vec3 target) {
