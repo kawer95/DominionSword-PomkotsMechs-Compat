@@ -8,6 +8,7 @@ import com.arxyt.dominionsword.control.PlayerControl;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
 import com.arxyt.dominionsword.pomkotscompat.control.MechPathPlanner;
+import com.arxyt.dominionsword.pomkotscompat.control.PomkotsControlDiagnostics;
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import com.arxyt.dominionsword.pomkotscompat.util.TakaoFireTracker;
 import grcmcs.minecraft.mods.pomkotsmechs.client.input.DriverInput;
@@ -78,6 +79,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private static final Map<UUID, Integer> SUWA_BURST_REMAINING_TICKS = new ConcurrentHashMap<>();
     private static final Map<SkillCooldownKey, Long> SKILL_COOLDOWNS = new ConcurrentHashMap<>();
     private static final Map<UUID, GroundMarker> GROUND_MARKERS = new ConcurrentHashMap<>();
+    private static final Map<UUID, ControlState> CONTROL_STATES = new ConcurrentHashMap<>();
+    private static final Map<UUID, Vec3> LAST_CONTROL_POSITIONS = new ConcurrentHashMap<>();
+    private static final Map<UUID, Double> LAST_TARGET_DISTANCES = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> IDLE_DRIFT_TICKS = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> MOVING_AWAY_TICKS = new ConcurrentHashMap<>();
     private static final Set<UUID> ACTIVE = ConcurrentHashMap.newKeySet();
 
     @Override public int priority() { return 100; }
@@ -135,14 +141,19 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         // overwrite Dominion's queued movement and weapon input.
         ensureGroundMode(vehicle);
         PomkotsPilotState.begin(mob, vehicle);
+        enterStandby((PomkotsVehicleBase) vehicle, "select", true);
         return true;
     }
 
     @Override
     public boolean release(ServerPlayer player, Entity vehicle) {
-        stop(vehicle, true);
         LivingEntity driver = driver(vehicle);
-        if (driver instanceof Mob mob) PomkotsPilotState.restore(mob);
+        if (vehicle instanceof PomkotsVehicleBase mech && driver instanceof Mob mob
+                && mech.getPassengers().contains(mob) && PomkotsPilotState.belongsTo(mob, mech)) {
+            enterStandby(mech, "selection_released", true);
+        } else {
+            releaseControl(vehicle, true);
+        }
         return true;
     }
 
@@ -193,8 +204,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return false;
         }
         if (vehicle instanceof PomkotsVehicleBase mech) {
-            submit(mech, (short) 0);
-            ((MechControlBridge) mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
+            PomkotsPilotState.begin(unit, mech);
+            enterStandby(mech, "boarded", true);
         }
         return true;
     }
@@ -204,9 +215,12 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if (seat != 0) return false;
         LivingEntity passenger = driver(vehicle);
         if (passenger == null) return false;
-        stop(vehicle, true);
+        if (vehicle instanceof PomkotsVehicleBase mech) enterStandby(mech, "dismount_requested", true);
         boolean dismounted = VehicleDismounts.dismount(vehicle, passenger);
-        if (dismounted && passenger instanceof Mob mob) PomkotsPilotState.restore(mob);
+        if (dismounted) {
+            releaseControl(vehicle, true);
+            if (passenger instanceof Mob mob) PomkotsPilotState.restore(mob);
+        }
         return dismounted;
     }
 
@@ -218,6 +232,10 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override
     public void prepareMoveRoute(ServerPlayer player, Entity vehicle, Vec3 target) {
         if (!canControl(player, vehicle) || target == null) return;
+        if (vehicle instanceof PomkotsVehicleBase mech) {
+            enterStandby(mech, "move_target_changed", true);
+            transition(mech, ControlState.MOVEMENT, "move_route");
+        }
         MechPathPlanner.Route route = planPilotRoute(vehicle, target);
         ROUTES.put(vehicle.getUUID(), new ActiveRoute(target, route, 1, vehicle.level().getGameTime()));
     }
@@ -231,14 +249,15 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     @Override
     public boolean move(ServerPlayer player, Entity vehicle, Vec3 target) {
-        if (!canControl(player, vehicle) || target == null) { stop(vehicle, false); return false; }
+        if (!canControl(player, vehicle) || target == null) { standby(vehicle, "invalid_move"); return false; }
+        transition((PomkotsVehicleBase) vehicle, ControlState.MOVEMENT, "move");
         return driveTo(vehicle, target, false);
     }
 
     @Override
     public boolean attack(ServerPlayer player, Entity vehicle, LivingEntity target) {
         if (!canControl(player, vehicle) || target == null || !target.isAlive() || target.level() != vehicle.level()) {
-            stop(vehicle, false);
+            standby(vehicle, "invalid_attack");
             return false;
         }
         LivingEntity pilot = driver(vehicle);
@@ -246,10 +265,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         UUID targetController = PlayerControl.controller(target);
         if (pilot == target || (player != null && FactionAccess.sameFaction(player, pilot, target))
                 || pilotController != null && pilotController.equals(targetController)) {
-            stop(vehicle, false);
+            standby(vehicle, "friendly_attack");
             return false;
         }
         PomkotsVehicleBase mech = (PomkotsVehicleBase) vehicle;
+        transition(mech, ControlState.COMBAT, "attack");
         if (requiresCombatMode(mech) && !mech.isMainMode()) {
             submit(mech, MODE);
             return true;
@@ -483,7 +503,8 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             return false;
         }
         if (!PlayerControl.redirectVehicleMove(context.commander(), mech, requestedJump)) return false;
-        ROUTES.remove(mech.getUUID());
+        enterStandby(mech, "jump_start", true);
+        transition(mech, ControlState.JUMP, "jump_start");
         JUMPS.put(mech.getUUID(), jump.get());
         ACTIVE.add(mech.getUUID());
         SKILL_COOLDOWNS.put(cooldown, now + VECTOR_BOOST_COOLDOWN_TICKS);
@@ -513,22 +534,21 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             }
             LivingEntity pilot = mech.getDrivingPassenger();
             if (pilot == null) pilot = driver(mech);
-            if (!(pilot instanceof Mob) || pilot instanceof Player) {
-                stop(mech, true);
+            if (!(pilot instanceof Mob mob) || pilot instanceof Player || !mech.getPassengers().contains(pilot)) {
+                restoreBoundPassengers(mech);
+                releaseControl(mech, true);
                 continue;
             }
-            PomkotsPilotState.begin((Mob) pilot, mech);
+            if (!PomkotsPilotState.belongsTo(mob, mech)) {
+                PomkotsPilotState.begin(mob, mech);
+                PomkotsControlDiagnostics.warn(mech, "binding_self_healed", diagnosticState(mech));
+            }
             CombatState combat = COMBAT.get(id);
             if (combat != null) {
                 Entity combatTarget = find(server, combat.target);
                 if (!(combatTarget instanceof LivingEntity livingTarget) || !livingTarget.isAlive()
                         || serverTick > combat.lastAttackTick + 20L) {
-                    submit(mech, (short)0);
-                    mech.getLockTargets().clearLockTargets();
-                    cancelPulse(id);
-                    COMBAT.remove(id, combat);
-                    INPUT_BITS.remove(id);
-                    ACTIVE.remove(id);
+                    enterStandby(mech, "combat_target_lost", true);
                 }
             }
             JumpState jump = JUMPS.get(id);
@@ -562,11 +582,13 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 }
             }
             submit(mech, inputBits);
+            diagnoseMotion(mech);
         }
     }
 
     private boolean driveTo(Entity vehicle, Vec3 finalTarget, boolean combatApproach) {
         PomkotsVehicleBase mech = (PomkotsVehicleBase) vehicle;
+        transition(mech, combatApproach ? ControlState.COMBAT : ControlState.MOVEMENT, "drive");
         JumpState jump = JUMPS.get(vehicle.getUUID());
         if (jump != null) return true;
 
@@ -684,7 +706,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         mech.setNoGravity(false);
         mech.setDeltaMovement(Vec3.ZERO);
         mech.fallDistance = 0.0F;
-        stopMovement(mech);
+        enterStandby(mech, "jump_landed", true);
     }
 
     private static void settleJumpCommandAtActualLanding(PomkotsVehicleBase mech) {
@@ -987,6 +1009,12 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         SKILL_COOLDOWNS.clear();
         GROUND_MARKERS.clear();
         ACTIVE.clear();
+        CONTROL_STATES.clear();
+        LAST_CONTROL_POSITIONS.clear();
+        LAST_TARGET_DISTANCES.clear();
+        IDLE_DRIFT_TICKS.clear();
+        MOVING_AWAY_TICKS.clear();
+        PomkotsControlDiagnostics.clearAll();
         TakaoFireTracker.clear();
     }
 
@@ -1114,18 +1142,59 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     private static void stopMovement(PomkotsVehicleBase mech) {
-        INPUT_BITS.put(mech.getUUID(), (short)0);
-        ((MechControlBridge)mech).dominion$setControlFrame(new MechControlFrame(true, 0, 0, mech.getYRot(), 0));
-        mech.setDeltaMovement(mech.getDeltaMovement().multiply(0.35D, 1.0D, 0.35D));
+        enterStandby(mech, "movement_complete", true);
     }
 
-    private static void stop(Entity vehicle, boolean clearTasks) {
+    private static void standby(Entity vehicle, String reason) {
+        if (vehicle instanceof PomkotsVehicleBase mech) enterStandby(mech, reason, true);
+    }
+
+    private static void enterStandby(PomkotsVehicleBase mech, String reason, boolean clearTasks) {
+        UUID id = mech.getUUID();
+        MechControlBridge bridge = (MechControlBridge) mech;
+        MechControlFrame frame = bridge.dominion$getControlFrame();
+        short currentInput = mech.getDriverInput() == null ? 0 : mech.getDriverInput().getStatus();
+        short queuedInput = bridge.dominion$hasQueuedDriverInput() ? bridge.dominion$getQueuedDriverInput() : 0;
+        short storedInput = INPUT_BITS.getOrDefault(id, (short) 0);
+        if (currentInput != 0 || queuedInput != 0 || storedInput != 0
+                || frame != null && (frame.forward() != 0.0F || frame.strafe() != 0.0F)) {
+            PomkotsControlDiagnostics.warn(mech, "residual_input_" + reason, diagnosticState(mech));
+        }
+
+        transition(mech, ControlState.STANDBY, reason);
+        INPUT_BITS.put(id, (short) 0);
+        mech.setDriverInput(new DriverInput((short) 0, mech.getDriverInput()));
+        submit(mech, (short) 0);
+        bridge.dominion$setControlFrame(new MechControlFrame(true, 0.0F, 0.0F, mech.getYRot(), 0.0F));
+        mech.getLockTargets().clearLockTargets();
+        mech.getLockTargets().clearLockTargetsMulti();
+        cancelPulse(id);
+        Vec3 velocity = mech.getDeltaMovement();
+        mech.setDeltaMovement(0.0D, velocity.y, 0.0D);
+        LivingEntity pilot = driver(mech);
+        if (pilot != null) {
+            pilot.zza = 0.0F;
+            pilot.xxa = 0.0F;
+            if (pilot instanceof Mob mob) mob.getNavigation().stop();
+        }
+        if (clearTasks) {
+            ROUTES.remove(id);
+            JUMPS.remove(id);
+            COMBAT.remove(id);
+            TakaoFireTracker.remove(id);
+        }
+        ACTIVE.add(id);
+    }
+
+    private static void releaseControl(Entity vehicle, boolean clearTasks) {
         if (vehicle instanceof PomkotsVehicleBase mech) {
+            transition(mech, ControlState.RELEASED, "driver_released");
             submit(mech, (short)0);
+            mech.setDriverInput(new DriverInput((short) 0, mech.getDriverInput()));
             mech.getLockTargets().clearLockTargets();
             ((MechControlBridge)mech).dominion$setControlFrame(MechControlFrame.INACTIVE);
             mech.setNoGravity(false);
-            LivingEntity pilot = mech.getDrivingPassenger();
+            LivingEntity pilot = driver(mech);
             if (pilot != null) {
                 pilot.zza = 0;
                 pilot.xxa = 0;
@@ -1135,14 +1204,67 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         UUID id = vehicle.getUUID();
         if (clearTasks) {
             cleanup(id);
-        } else {
-            TakaoFireTracker.remove(id);
-            INPUT_BITS.remove(id);
-            ACTIVE.remove(id);
-            JUMPS.remove(id);
-            cancelPulse(id);
-            COMBAT.remove(id);
         }
+    }
+
+    private static void restoreBoundPassengers(PomkotsVehicleBase mech) {
+        for (Entity passenger : mech.getPassengers()) {
+            if (passenger instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech)) {
+                PomkotsPilotState.restore(mob);
+            }
+        }
+    }
+
+    private static void transition(PomkotsVehicleBase mech, ControlState state, String reason) {
+        CONTROL_STATES.put(mech.getUUID(), state);
+    }
+
+    private static void diagnoseMotion(PomkotsVehicleBase mech) {
+        UUID id = mech.getUUID();
+        Vec3 position = mech.position();
+        Vec3 previous = LAST_CONTROL_POSITIONS.put(id, position);
+        boolean standby = CONTROL_STATES.getOrDefault(id, ControlState.STANDBY) == ControlState.STANDBY
+                && !ROUTES.containsKey(id) && !JUMPS.containsKey(id) && !COMBAT.containsKey(id)
+                && INPUT_BITS.getOrDefault(id, (short) 0) == 0 && !PULSES.containsKey(id);
+        if (standby && previous != null && flatDistance(previous, position) > 0.06D) {
+            int ticks = IDLE_DRIFT_TICKS.merge(id, 1, Integer::sum);
+            if (ticks >= 3) {
+                PomkotsControlDiagnostics.warn(mech, "idle_horizontal_displacement", diagnosticState(mech));
+                Vec3 movement = mech.getDeltaMovement();
+                mech.setDeltaMovement(0.0D, movement.y, 0.0D);
+            }
+        } else {
+            IDLE_DRIFT_TICKS.remove(id);
+        }
+
+        ActiveRoute route = ROUTES.get(id);
+        if (route == null) {
+            LAST_TARGET_DISTANCES.remove(id);
+            MOVING_AWAY_TICKS.remove(id);
+            return;
+        }
+        double distance = flatDistance(position, route.target);
+        Double oldDistance = LAST_TARGET_DISTANCES.put(id, distance);
+        if (oldDistance != null && distance > oldDistance + 0.08D) {
+            int ticks = MOVING_AWAY_TICKS.merge(id, 1, Integer::sum);
+            if (ticks >= 10) {
+                PomkotsControlDiagnostics.warn(mech, "moving_away_from_target", diagnosticState(mech));
+            }
+        } else {
+            MOVING_AWAY_TICKS.remove(id);
+        }
+    }
+
+    private static String diagnosticState(PomkotsVehicleBase mech) {
+        UUID id = mech.getUUID();
+        ActiveRoute route = ROUTES.get(id);
+        CombatState combat = COMBAT.get(id);
+        return "control=" + CONTROL_STATES.getOrDefault(id, ControlState.RELEASED)
+                + ",route=" + (route == null ? null : route.target)
+                + ",combat=" + (combat == null ? null : combat.target)
+                + ",jump=" + JUMPS.containsKey(id)
+                + ",active=" + ACTIVE.contains(id)
+                + ",inputBits=" + INPUT_BITS.getOrDefault(id, (short) 0);
     }
 
     private static Entity find(MinecraftServer server, UUID id) {
@@ -1160,7 +1282,15 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         AUTO_AUXILIARY_READY_TICKS.remove(id);
         SUWA_BURST_REMAINING_TICKS.remove(id);
         SKILL_COOLDOWNS.keySet().removeIf(key -> key.vehicleId().equals(id));
+        CONTROL_STATES.remove(id);
+        LAST_CONTROL_POSITIONS.remove(id);
+        LAST_TARGET_DISTANCES.remove(id);
+        IDLE_DRIFT_TICKS.remove(id);
+        MOVING_AWAY_TICKS.remove(id);
+        PomkotsControlDiagnostics.clear(id);
     }
+
+    private enum ControlState { MOVEMENT, COMBAT, JUMP, STANDBY, RELEASED }
 
     private static final class ActiveRoute {
         final Vec3 target; final MechPathPlanner.Route route; final long builtAt; int index;

@@ -5,4 +5,6 @@ public interface MechControlBridge {
     MechControlFrame dominion$getControlFrame();
     void dominion$queueDriverInput(short bits);
     short dominion$getLastAppliedDriverInput();
+    short dominion$getQueuedDriverInput();
+    boolean dominion$hasQueuedDriverInput();
 }

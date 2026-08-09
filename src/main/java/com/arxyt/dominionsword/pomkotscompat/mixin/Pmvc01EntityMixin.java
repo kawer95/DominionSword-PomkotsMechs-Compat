@@ -2,6 +2,7 @@ package com.arxyt.dominionsword.pomkotscompat.mixin;
 
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlBridge;
 import com.arxyt.dominionsword.pomkotscompat.control.MechControlFrame;
+import com.arxyt.dominionsword.pomkotscompat.control.PomkotsControlDiagnostics;
 import com.arxyt.dominionsword.pomkotscompat.control.PomkotsPilotState;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.npc.pilot.ai.MechAutoController;
 import grcmcs.minecraft.mods.pomkotsmechs.entity.vehicle.custom.Pmvc01Entity;
@@ -25,12 +26,18 @@ public abstract class Pmvc01EntityMixin {
     private void dominion$trackPilot(CallbackInfo ci) {
         Pmvc01Entity mech = (Pmvc01Entity) (Object) this;
         Entity current = mech.getDrivingPassenger();
-        if (dominion$trackedPilot != null && dominion$trackedPilot != current) {
+        if (current == null) current = dominion$firstLivingPassenger(mech);
+        if (dominion$trackedPilot != null && (!dominion$trackedPilot.isAlive()
+                || !mech.getPassengers().contains(dominion$trackedPilot)
+                || current instanceof net.minecraft.world.entity.player.Player)) {
             PomkotsPilotState.restore(dominion$trackedPilot);
             dominion$trackedPilot = null;
         }
         if (current instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech)) {
             dominion$trackedPilot = mob;
+        } else if (current instanceof Mob mob && dominion$trackedPilot == mob) {
+            PomkotsPilotState.begin(mob, mech);
+            PomkotsControlDiagnostics.warn(mech, "binding_self_healed", "source=pmvc01_track_pilot");
         }
     }
 
@@ -44,9 +51,20 @@ public abstract class Pmvc01EntityMixin {
     )
     private void dominion$applyUnitPilotInput(Vec3 travelVector, CallbackInfo ci) {
         MechControlFrame frame = ((MechControlBridge) this).dominion$getControlFrame();
-        if (frame == null || !frame.active()) return;
-        Entity pilot = ((Pmvc01Entity) (Object) this).getDrivingPassenger();
+        Pmvc01Entity mech = (Pmvc01Entity) (Object) this;
+        Entity pilot = mech.getDrivingPassenger();
+        if (pilot == null) pilot = dominion$firstLivingPassenger(mech);
         if (!(pilot instanceof Mob mob)) return;
+        if (!PomkotsPilotState.belongsTo(mob, mech)) return;
+        if (frame == null || !frame.active()) {
+            ((MechControlBridge) this).dominion$setControlFrame(
+                    new MechControlFrame(true, 0.0F, 0.0F, mech.getYRot(), 0.0F));
+            mob.zza = 0.0F;
+            mob.xxa = 0.0F;
+            mob.getNavigation().stop();
+            PomkotsControlDiagnostics.warn(mech, "binding_self_healed", "source=pmvc01_travel_inactive_frame");
+            return;
+        }
         mob.zza = frame.forward();
         mob.xxa = frame.strafe();
         mob.setYRot(frame.yaw());
@@ -66,7 +84,16 @@ public abstract class Pmvc01EntityMixin {
     private void dominion$pauseNativeMobController(MechAutoController controller) {
         Pmvc01Entity mech = (Pmvc01Entity) (Object) this;
         Entity driver = mech.getDrivingPassenger();
-        if (driver instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech)) return;
+        if (driver == null) driver = dominion$firstLivingPassenger(mech);
+        if (driver instanceof Mob mob && mech.getPassengers().contains(mob)
+                && PomkotsPilotState.belongsTo(mob, mech)) {
+            MechControlFrame frame = ((MechControlBridge) this).dominion$getControlFrame();
+            if (frame == null || !frame.active()) {
+                PomkotsControlDiagnostics.warn(mech, "native_controller_suppressed",
+                        "source=MechAutoController.tick,inactiveFrame=true");
+            }
+            return;
+        }
         MechControlBridge bridge = (MechControlBridge) this;
         if (!bridge.dominion$getControlFrame().active()) {
             controller.tick();
@@ -128,6 +155,16 @@ public abstract class Pmvc01EntityMixin {
         }
         if (!(time > 0.0D) || !Double.isFinite(time)) time = Math.sqrt(c) / projectileSpeed;
         return Math.min(time, 20.0D);
+    }
+
+    @Unique
+    private static Entity dominion$firstLivingPassenger(Pmvc01Entity mech) {
+        for (Entity passenger : mech.getPassengers()) {
+            if (passenger instanceof net.minecraft.world.entity.LivingEntity living && living.isAlive()) {
+                return living;
+            }
+        }
+        return null;
     }
 
     @Inject(
