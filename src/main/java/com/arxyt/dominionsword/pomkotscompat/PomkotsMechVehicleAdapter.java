@@ -140,7 +140,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         // interaction instead of Dominion's seat menu, so the native pilot controller cannot
         // overwrite Dominion's queued movement and weapon input.
         ensureGroundMode(vehicle);
-        PomkotsPilotState.begin(mob, vehicle);
+        PomkotsPilotState.attachMounted(mob, vehicle);
         enterStandby((PomkotsVehicleBase) vehicle, "select", true);
         return true;
     }
@@ -197,14 +197,14 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
             PomkotsPilotState.restore((Mob) occupant);
         }
         ensureGroundMode(vehicle);
-        PomkotsPilotState.begin(unit, vehicle);
+        PomkotsPilotState.beginBeforeMount(unit, vehicle);
         boolean boarded = unit.getVehicle() == vehicle || unit.startRiding(vehicle, true);
         if (!boarded) {
             PomkotsPilotState.restore(unit);
             return false;
         }
         if (vehicle instanceof PomkotsVehicleBase mech) {
-            PomkotsPilotState.begin(unit, mech);
+            PomkotsPilotState.attachMounted(unit, mech);
             enterStandby(mech, "boarded", true);
         }
         return true;
@@ -540,7 +540,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
                 continue;
             }
             if (!PomkotsPilotState.belongsTo(mob, mech)) {
-                PomkotsPilotState.begin(mob, mech);
+                PomkotsPilotState.attachMounted(mob, mech);
                 PomkotsControlDiagnostics.warn(mech, "binding_self_healed", diagnosticState(mech));
             }
             CombatState combat = COMBAT.get(id);

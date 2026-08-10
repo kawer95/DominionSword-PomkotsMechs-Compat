@@ -36,7 +36,7 @@ public abstract class Pmvc01EntityMixin {
         if (current instanceof Mob mob && PomkotsPilotState.belongsTo(mob, mech)) {
             dominion$trackedPilot = mob;
         } else if (current instanceof Mob mob && dominion$trackedPilot == mob) {
-            PomkotsPilotState.begin(mob, mech);
+            PomkotsPilotState.attachMounted(mob, mech);
             PomkotsControlDiagnostics.warn(mech, "binding_self_healed", "source=pmvc01_track_pilot");
         }
     }
