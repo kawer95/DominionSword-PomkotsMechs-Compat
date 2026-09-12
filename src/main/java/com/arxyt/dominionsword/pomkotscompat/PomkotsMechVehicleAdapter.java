@@ -211,6 +211,38 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     @Override
+    public boolean supportsPlayerBoarding(ServerPlayer player, Entity vehicle, int seat) {
+        return player != null && player.isAlive() && supports(vehicle) && seat == 0;
+    }
+
+    @Override
+    public Vec3 playerBoardingPosition(ServerPlayer player, Entity vehicle) {
+        AABB access = vehicle.getBoundingBox().inflate(1.15D, 0.0D, 1.15D);
+        return new Vec3(Mth.clamp(player.getX(), access.minX, access.maxX), vehicle.getY(),
+                Mth.clamp(player.getZ(), access.minZ, access.maxZ));
+    }
+
+    @Override
+    public boolean canPlayerBoardFrom(ServerPlayer player, Entity vehicle) {
+        return player.distanceToSqr(playerBoardingPosition(player, vehicle)) <= 2.25D * 2.25D;
+    }
+
+    @Override
+    public boolean boardPlayer(ServerPlayer player, Entity vehicle, int seat, boolean force) {
+        if (!supportsPlayerBoarding(player, vehicle, seat)) return false;
+        LivingEntity occupant = driver(vehicle);
+        if (occupant != null && occupant != player) {
+            if (!force || !(occupant instanceof Mob mob) || !player.getUUID().equals(PlayerControl.controller(mob))) return false;
+            if (!VehicleDismounts.dismount(vehicle, occupant)) return false;
+            PomkotsPilotState.restore(mob);
+        }
+        ensureGroundMode(vehicle);
+        boolean boarded = player.getVehicle() == vehicle || player.startRiding(vehicle, true);
+        if (boarded && vehicle instanceof PomkotsVehicleBase mech) enterStandby(mech, "player_boarded", true);
+        return boarded;
+    }
+
+    @Override
     public boolean dismount(ServerPlayer player, Entity vehicle, int seat) {
         if (seat != 0) return false;
         LivingEntity passenger = driver(vehicle);
