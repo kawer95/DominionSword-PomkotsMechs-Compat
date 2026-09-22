@@ -89,6 +89,14 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override public int priority() { return 100; }
 
     @Override
+    public com.arxyt.dominionsword.api.DominionGroundProfile groundProfile(Entity vehicle) {
+        if (!supports(vehicle) || vehicle instanceof Pmv03pEntity flying && flying.isMainMode()) return null;
+        return com.arxyt.dominionsword.api.DominionGroundProfile.of(vehicle,
+                com.arxyt.dominionsword.api.DominionGroundProfile.Kind.BIPED);
+    }
+    @Override public void holdGroundRoute(Entity vehicle) { stopMovement((PomkotsVehicleBase)vehicle); }
+
+    @Override
     public boolean supports(Entity vehicle) {
         if (!(vehicle instanceof PomkotsVehicleBase)) return false;
         var key = BuiltInRegistries.ENTITY_TYPE.getKey(vehicle.getType());
@@ -630,7 +638,16 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         while (active.index < points.size() - 1 && flatDistance(vehicle.position(), points.get(active.index).position()) < 1.35D) active.index++;
         MechPathPlanner.RoutePoint point = points.get(Math.min(active.index, points.size() - 1));
         Vec3 target = point.position();
+        if (vehicle.horizontalCollision && vehicle.level().getGameTime() - active.builtAt > 20) {
+            ROUTES.remove(vehicle.getUUID()); stopMovement(mech); return true;
+        }
         double finalDistance = flatDistance(vehicle.position(), finalTarget);
+        if (active.route.status() == MechPathPlanner.Status.PARTIAL
+                && active.index >= points.size() - 1 && flatDistance(vehicle.position(), target) < 1.35D) {
+            ROUTES.remove(vehicle.getUUID());
+            stopMovement(mech);
+            return true;
+        }
         if (finalDistance <= 0.75D || active.index >= points.size() - 1
                 && flatDistance(vehicle.position(), target) < 1.35D) {
             stopMovement(mech);
@@ -753,7 +770,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private ActiveRoute ensureRoute(Entity vehicle, Vec3 target) {
         ActiveRoute route = ROUTES.get(vehicle.getUUID());
         long now = vehicle.level().getGameTime();
-        if (route == null || route.target.distanceToSqr(target) > 1.0D || now - route.builtAt > 80
+        if (route == null || route.route.points().isEmpty() || route.target.distanceToSqr(target) > 1.0D
                 || route.index >= route.route.points().size() && flatDistance(vehicle.position(), target) > 1.0D) {
             route = rebuildRoute(vehicle, target);
         }
@@ -1025,6 +1042,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     }
 
     public void clearAll(MinecraftServer server) {
+        MechPathPlanner.clear();
         if (server != null) {
             for (UUID markerId : GROUND_MARKERS.keySet()) {
                 Entity marker = find(server, markerId);

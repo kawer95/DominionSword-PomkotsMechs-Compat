@@ -18,72 +18,115 @@ public final class MechPathPlanner {
 
     private MechPathPlanner() {}
 
+    private static final Map<UUID, Search> SEARCHES = new HashMap<>();
+    public static void clear() { SEARCHES.clear(); }
+
+    /** Incremental main-thread search. Pending/no-path are never disguised as direct routes. */
     public static Route plan(Entity vehicle, Vec3 requestedTarget) {
-        if (!(vehicle.level() instanceof ServerLevel level) || requestedTarget == null) return Route.direct(vehicle.position(), requestedTarget);
-        Vec3 startPos = vehicle.position();
-        Vec3 target = clampRange(startPos, requestedTarget, MAX_RADIUS);
-        Node start = new Node((int)Math.floor(startPos.x), (int)Math.floor(startPos.y), (int)Math.floor(startPos.z));
-        int goalX = (int)Math.floor(target.x), goalZ = (int)Math.floor(target.z);
-
-        PriorityQueue<OpenNode> open = new PriorityQueue<>(Comparator.comparingDouble(OpenNode::score));
-        Map<Node, Double> cost = new HashMap<>();
-        Map<Node, StepFrom> cameFrom = new HashMap<>();
-        cost.put(start, 0.0D);
-        open.add(new OpenNode(start, heuristic(start, goalX, goalZ)));
-        Node best = start;
-        double bestDistance = heuristic(start, goalX, goalZ);
-        int expanded = 0;
-
-        while (!open.isEmpty() && expanded++ < MAX_NODES) {
-            Node current = open.poll().node();
-            double distance = heuristic(current, goalX, goalZ);
-            if (distance < bestDistance) { best = current; bestDistance = distance; }
-            if (distance <= 2.5D) { best = current; break; }
-
-            for (int[] direction : DIRECTIONS) {
-                int nx = current.x + direction[0] * STEP;
-                int nz = current.z + direction[1] * STEP;
-                Integer ny = findStandY(level, vehicle, nx + 0.5D, nz + 0.5D, current.y, 2);
-                if (ny == null || !sweepClear(level, vehicle, current.center(), new Vec3(nx + 0.5D, ny, nz + 0.5D))) continue;
-                Node next = new Node(nx, ny, nz);
-                double stepCost = Math.hypot(direction[0], direction[1]) * STEP + Math.abs(ny - current.y) * 0.8D;
-                relax(current, next, false, stepCost, goalX, goalZ, open, cost, cameFrom);
-            }
-
-            // Jump links are considered only when the first walking step in that direction is blocked.
-            for (int i = 0; i < 4; i++) {
-                int[] direction = DIRECTIONS[i];
-                int walkX = current.x + direction[0] * STEP, walkZ = current.z + direction[1] * STEP;
-                if (findStandY(level, vehicle, walkX + 0.5D, walkZ + 0.5D, current.y, 2) != null) continue;
-                for (int distanceBlocks : new int[]{6, 8, 10}) {
-                    int nx = current.x + direction[0] * distanceBlocks;
-                    int nz = current.z + direction[1] * distanceBlocks;
-                    Integer ny = findStandY(level, vehicle, nx + 0.5D, nz + 0.5D, current.y, 3);
-                    if (ny == null) continue;
-                    Vec3 landing = new Vec3(nx + 0.5D, ny, nz + 0.5D);
-                    if (!safeJumpArc(level, vehicle, current.center(), landing)) continue;
+        if (!(vehicle.level() instanceof ServerLevel level) || requestedTarget == null)
+            return new Route(List.of(), Status.NO_PATH);
+        long tick = level.getGameTime();
+        SEARCHES.entrySet().removeIf(e -> e.getValue().level != level && e.getValue().level.getServer() != level.getServer()
+                || e.getValue().level == level && tick - e.getValue().used > 100);
+        Search search = SEARCHES.get(vehicle.getUUID());
+        if (search == null || search.level != level || search.requested.distanceToSqr(requestedTarget) > 1
+                || search.origin.distanceToSqr(vehicle.position()) > 16) {
+            if (SEARCHES.size() >= 128 && !SEARCHES.containsKey(vehicle.getUUID())) return new Route(List.of(), Status.PENDING);
+            search = new Search(level, vehicle.position(), requestedTarget, tick);
+            SEARCHES.put(vehicle.getUUID(), search);
+        }
+        search.used = tick;
+        if (search.failedUntil > tick) return new Route(List.of(), Status.NO_PATH);
+        if (search.failedUntil != 0) {
+            search = new Search(level, vehicle.position(), requestedTarget, tick);
+            SEARCHES.put(vehicle.getUUID(), search);
+        }
+        try (var budget = com.arxyt.dominionsword.api.DominionPathBudget.acquire(level.getServer(),
+                level.getServer().getTickCount(), vehicle.getUUID().toString() + ":mech")) {
+            if (budget == null) return new Route(List.of(), Status.PENDING);
+            while (!search.open.isEmpty() && search.expanded < MAX_NODES && budget.step()) {
+                OpenNode item = search.open.poll();
+                Node current = item.node();
+                if (!search.closed.add(current)) continue;
+                search.expanded++;
+                double distance = heuristic(current, search.goalX, search.goalZ);
+                if (distance < search.bestDistance) { search.best = current; search.bestDistance = distance; }
+                if (distance <= 2.5D && Math.abs(current.y - search.target.y) <= 2) {
+                    Route result = finish(vehicle, search, current);
+                    SEARCHES.remove(vehicle.getUUID());
+                    return result;
+                }
+                for (int[] d : DIRECTIONS) {
+                    int nx = current.x + d[0] * STEP, nz = current.z + d[1] * STEP;
+                    if (Math.hypot(nx - search.start.x, nz - search.start.z) > MAX_RADIUS + 8) continue;
+                    Integer ny = findStandY(level, vehicle, nx + .5, nz + .5, current.y, 2);
+                    if (ny == null || !sweepClear(level, vehicle, current.center(), new Vec3(nx + .5, ny, nz + .5))) continue;
                     Node next = new Node(nx, ny, nz);
-                    relax(current, next, true, distanceBlocks * 1.15D + 3.0D, goalX, goalZ, open, cost, cameFrom);
-                    break;
+                    if (search.closed.contains(next)) continue;
+                    relax(current, next, false, Math.hypot(d[0],d[1]) * STEP + Math.abs(ny-current.y)*.8,
+                            search.goalX, search.goalZ, search.open, search.cost, search.from);
+                }
+                // Jump skills remain available separately. Route following cannot yet execute jump edges.
+            }
+            if (search.open.isEmpty() || search.expanded >= MAX_NODES) {
+                if (!search.best.equals(search.start) && search.bestDistance + 2 < heuristic(search.start, search.goalX, search.goalZ)) {
+                    Route result = finish(vehicle, search, search.best);
+                    SEARCHES.remove(vehicle.getUUID());
+                    return result;
+                }
+                search.failedUntil = tick + 40;
+                return new Route(List.of(), Status.NO_PATH);
+            }
+            return new Route(List.of(), Status.PENDING);
+        }
+    }
+
+    private static Route finish(Entity vehicle, Search search, Node end) {
+        LinkedList<RoutePoint> points = new LinkedList<>();
+        for (Node cursor = end; !cursor.equals(search.start); ) {
+            StepFrom previous = search.from.get(cursor);
+            if (previous == null) break;
+            points.addFirst(new RoutePoint(cursor.center(), false));
+            cursor = previous.previous();
+        }
+        points.addFirst(new RoutePoint(search.origin, false));
+        Vec3 last = points.getLast().position();
+        // The last segment is tested just like every ordinary edge, including height and support.
+        boolean full = false;
+        if (last.distanceToSqr(search.requested) <= 16) {
+            Integer y = findStandY(search.level, vehicle, search.requested.x, search.requested.z, end.y, 2);
+            if (y != null && Math.abs(y - search.requested.y) <= 1) {
+                Vec3 exact = new Vec3(search.requested.x, y, search.requested.z);
+                if (sweepClear(search.level, vehicle, last, exact)) {
+                    if (last.distanceToSqr(exact) > .01) points.add(new RoutePoint(exact,false));
+                    full = true;
                 }
             }
         }
+        return new Route(points, full ? Status.COMPLETE : Status.PARTIAL);
+    }
 
-        if (best.equals(start)) return Route.direct(startPos, requestedTarget);
-        LinkedList<RoutePoint> points = new LinkedList<>();
-        Node cursor = best;
-        while (!cursor.equals(start)) {
-            StepFrom from = cameFrom.get(cursor);
-            if (from == null) break;
-            points.addFirst(new RoutePoint(cursor.center(), from.jump()));
-            cursor = from.previous();
+    private static final class Search {
+        final ServerLevel level;
+        final Vec3 origin, requested, target;
+        final Node start;
+        final int goalX, goalZ;
+        final PriorityQueue<OpenNode> open = new PriorityQueue<>(Comparator.comparingDouble(OpenNode::score));
+        final Map<Node,Double> cost = new HashMap<>();
+        final Map<Node,StepFrom> from = new HashMap<>();
+        final Set<Node> closed = new HashSet<>();
+        Node best;
+        double bestDistance;
+        int expanded;
+        long used, failedUntil;
+        Search(ServerLevel level, Vec3 origin, Vec3 requested, long tick) {
+            this.level=level; this.origin=origin; this.requested=requested;
+            target=clampRange(origin,requested,MAX_RADIUS);
+            start=new Node((int)Math.floor(origin.x),(int)Math.floor(origin.y),(int)Math.floor(origin.z));
+            goalX=(int)Math.floor(target.x); goalZ=(int)Math.floor(target.z);
+            best=start; bestDistance=heuristic(start,goalX,goalZ); used=tick;
+            cost.put(start,0D); open.add(new OpenNode(start,bestDistance));
         }
-        points.addFirst(new RoutePoint(startPos, false));
-        if (bestDistance <= 2.5D && requestedTarget.distanceToSqr(points.getLast().position()) > 1.0D) {
-            Integer finalY = findStandY(level, vehicle, requestedTarget.x, requestedTarget.z, best.y, 2);
-            if (finalY != null) points.add(new RoutePoint(new Vec3(requestedTarget.x, finalY, requestedTarget.z), false));
-        }
-        return new Route(List.copyOf(points));
     }
 
     public static Optional<Vec3> safeJumpLanding(Entity vehicle, float yawDegrees) {
@@ -211,7 +254,9 @@ public final class MechPathPlanner {
     private record OpenNode(Node node, double score) {}
     private record StepFrom(Node previous, boolean jump) {}
     public record RoutePoint(Vec3 position, boolean jumpFromPrevious) {}
-    public record Route(List<RoutePoint> points) {
+    public enum Status { COMPLETE, PARTIAL, PENDING, NO_PATH }
+    public record Route(List<RoutePoint> points, Status status) {
+        public Route(List<RoutePoint> points) { this(points, points == null || points.isEmpty() ? Status.NO_PATH : Status.COMPLETE); }
         public Route { points = points == null ? List.of() : List.copyOf(points); }
         public static Route direct(Vec3 start, Vec3 target) {
             if (target == null) return new Route(List.of(new RoutePoint(start, false)));
