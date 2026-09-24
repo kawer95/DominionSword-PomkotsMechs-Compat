@@ -89,8 +89,27 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     @Override public int priority() { return 100; }
 
     @Override public List<Vec3> marchRoute(ServerPlayer player,Entity vehicle,Vec3 target) {
+        if(vehicle==null || target==null)return List.of();
         ActiveRoute route=ensureRoute(vehicle,target);
-        return route.route.positions();
+        List<MechPathPlanner.RoutePoint> points=route.route.points();
+        if(route.route.status()==MechPathPlanner.Status.PARTIAL && !points.isEmpty()
+                && route.index>=points.size()-1
+                && flatDistance(vehicle.position(),points.get(points.size()-1).position())<1.35D
+                && flatDistance(vehicle.position(),target)>1.0D) {
+            // The native driver would discard this consumed partial segment on its next tick.
+            // March planning must do the same even while the group is holding position.
+            ROUTES.remove(vehicle.getUUID(),route);
+            route=ensureRoute(vehicle,target);
+            points=route.route.points();
+        }
+        if(route.route.status()==MechPathPlanner.Status.PENDING
+                || route.route.status()==MechPathPlanner.Status.NO_PATH || points.size()<2)return List.of();
+        int index=Math.max(1,route.index);
+        if(index>=points.size())return List.of();
+        List<Vec3> remaining=new ArrayList<>();
+        remaining.add(vehicle.position());
+        for(int i=index;i<points.size();i++)remaining.add(points.get(i).position());
+        return remaining.get(remaining.size()-1).distanceToSqr(vehicle.position())>.01D ? remaining : List.of();
     }
 
     @Override
