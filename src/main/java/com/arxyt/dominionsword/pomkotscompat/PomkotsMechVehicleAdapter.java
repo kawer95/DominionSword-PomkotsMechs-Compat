@@ -95,7 +95,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         if(route.route.status()==MechPathPlanner.Status.PARTIAL && !points.isEmpty()
                 && route.index>=points.size()-1
                 && flatDistance(vehicle.position(),points.get(points.size()-1).position())<1.35D
-                && flatDistance(vehicle.position(),target)>1.0D) {
+                && (flatDistance(vehicle.position(),target)>1.0D || Math.abs(vehicle.getY()-target.y)>.75)) {
             // The native driver would discard this consumed partial segment on its next tick.
             // March planning must do the same even while the group is holding position.
             ROUTES.remove(vehicle.getUUID(),route);
@@ -660,7 +660,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         ActiveRoute active = ensureRoute(vehicle, finalTarget);
         List<MechPathPlanner.RoutePoint> points = active.route.points();
         if (points.size() < 2) { stopMovement(mech); return false; }
-        while (active.index < points.size() - 1 && flatDistance(vehicle.position(), points.get(active.index).position()) < 1.35D) active.index++;
+        while (active.index < points.size() - 1 && vehicle.position().distanceToSqr(points.get(active.index).position()) < .75D*.75D) active.index++;
         MechPathPlanner.RoutePoint point = points.get(Math.min(active.index, points.size() - 1));
         Vec3 target = point.position();
         if (vehicle.horizontalCollision && vehicle.level().getGameTime() - active.builtAt > 20) {
@@ -668,17 +668,19 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         }
         double finalDistance = flatDistance(vehicle.position(), finalTarget);
         if (active.route.status() == MechPathPlanner.Status.PARTIAL
-                && active.index >= points.size() - 1 && flatDistance(vehicle.position(), target) < 1.35D) {
+                && active.index >= points.size() - 1 && vehicle.position().distanceToSqr(target) < .75D*.75D) {
             ROUTES.remove(vehicle.getUUID());
             stopMovement(mech);
             return true;
         }
-        if (finalDistance <= 0.75D || active.index >= points.size() - 1
-                && flatDistance(vehicle.position(), target) < 1.35D) {
+        if (finalDistance <= 0.75D && Math.abs(vehicle.getY()-finalTarget.y)<=.75D) {
             stopMovement(mech);
             return true;
         }
 
+        if (!MechPathPlanner.canWalkEdge(vehicle,target)) {
+            ROUTES.remove(vehicle.getUUID()); stopMovement(mech); return true;
+        }
         float desiredYaw = yawTo(vehicle.position(), target);
         float yawDelta = Mth.wrapDegrees(desiredYaw - vehicle.getYRot());
         // A walking living vehicle must turn in place like a Mob.  Driving forward through a
@@ -795,7 +797,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
     private ActiveRoute ensureRoute(Entity vehicle, Vec3 target) {
         ActiveRoute route = ROUTES.get(vehicle.getUUID());
         long now = vehicle.level().getGameTime();
-        if (route == null || route.route.points().isEmpty() || route.target.distanceToSqr(target) > 1.0D
+        if (route == null || route.route.points().isEmpty() || route.target.distanceToSqr(target) > .01D || Math.abs(route.target.y-target.y)>.25D
                 || route.index >= route.route.points().size() && flatDistance(vehicle.position(), target) > 1.0D) {
             route = rebuildRoute(vehicle, target);
         }
