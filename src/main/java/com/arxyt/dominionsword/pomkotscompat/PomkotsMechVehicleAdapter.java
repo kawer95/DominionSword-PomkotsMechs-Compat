@@ -88,6 +88,11 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
 
     @Override public int priority() { return 100; }
 
+    @Override public List<Vec3> marchRoute(ServerPlayer player,Entity vehicle,Vec3 target) {
+        ActiveRoute route=ensureRoute(vehicle,target);
+        return route.route.positions();
+    }
+
     @Override
     public com.arxyt.dominionsword.api.DominionGroundProfile groundProfile(Entity vehicle) {
         if (!supports(vehicle) || vehicle instanceof Pmv03pEntity flying && flying.isMainMode()) return null;
@@ -631,6 +636,7 @@ public final class PomkotsMechVehicleAdapter implements DominionVehicleAdapter, 
         transition(mech, combatApproach ? ControlState.COMBAT : ControlState.MOVEMENT, "drive");
         JumpState jump = JUMPS.get(vehicle.getUUID());
         if (jump != null) return true;
+        if (com.arxyt.dominionsword.api.DominionMarchApi.shouldBrake(vehicle)) { stopMovement(mech); return true; }
 
         ActiveRoute active = ensureRoute(vehicle, finalTarget);
         List<MechPathPlanner.RoutePoint> points = active.route.points();
